@@ -203,6 +203,7 @@ STATUS_OF_ENDING: dict[CycleStopReason, CycleStatus | None] = {
     CycleStopReason.REVISION_UNAVAILABLE: CycleStatus.FAILED,
     CycleStopReason.GATE_DECISION_UNRECOGNIZED: CycleStatus.FAILED,
     CycleStopReason.GATE_FAILED: CycleStatus.FAILED,
+    CycleStopReason.GATE_INPUT_UNAVAILABLE: CycleStatus.FAILED,
     CycleStopReason.CRITERIA_NOT_CHECKABLE: CycleStatus.FAILED,
     CycleStopReason.SKILL_STOPPED: CycleStatus.FAILED,
 }

@@ -10,8 +10,13 @@ from __future__ import annotations
 import logging
 from types import SimpleNamespace
 
-from squadops.cycles.contract_derivation import load_seeded_manifest_content
-from squadops.cycles.vault_reads import retrieve_or_absent
+import pytest
+
+from squadops.cycles.contract_derivation import (
+    load_recorded_manifest_content,
+    load_seeded_manifest_content,
+)
+from squadops.cycles.vault_reads import ArtifactUnavailable, retrieve_or_absent
 
 _MANIFEST = SimpleNamespace(filename="interface_manifest.yaml", artifact_type="interface_manifest")
 _OTHER = SimpleNamespace(filename="notes.md", artifact_type="document")
@@ -52,3 +57,24 @@ async def test_the_seeded_manifest_lookup_reads_past_an_unreadable_ref_and_names
     assert content == "version: 1\n"
     assert "art_gone" in caplog.text
     assert "art_m" not in caplog.text
+
+
+async def test_the_executors_manifest_lookup_fails_by_name_on_a_ref_it_cant_read():
+    """#3128, the executor's counterpart of the lookup above, entered at
+    ``load_recorded_manifest_content``. Bug caught: a forwarded ref the vault can't return read
+    as "not the manifest", so the run or its gate went on to the next ref, or to "no manifest
+    seeded", and the plan was rejected for the vault's fault."""
+    vault = _Vault({"art_m": (_MANIFEST, b"version: 1\n")})
+
+    with pytest.raises(ArtifactUnavailable) as failed:
+        await load_recorded_manifest_content(vault, ["art_gone", "art_m"])
+
+    assert (failed.value.artifact_id, failed.value.kind) == ("art_gone", "artifact_unretrieved")
+
+
+async def test_the_executors_manifest_lookup_reads_every_ref_before_it_says_there_is_none():
+    vault = _Vault({"art_n": (_OTHER, b"notes"), "art_m": (_MANIFEST, b"version: 1\n")})
+
+    assert await load_recorded_manifest_content(vault, ["art_n", "art_m"]) == "version: 1\n"
+    assert await load_recorded_manifest_content(vault, ["art_n"]) is None
+    assert await load_recorded_manifest_content(vault, None) is None
