@@ -2909,6 +2909,17 @@ checks:
       o = resolve_terminal_outcome(ArtifactUnreadableError("art_1: bad hash"), "run_1")
       print(sum("retrieve_recorded(" in inspect.getsource(m) for m in (criterion_head_check, product_acceptance, product_proposal, source_delivery)), o.terminal.kind.value, o.terminal.failure_classification)
     expect: "4 infrastructure_failed artifact_unreadable"
+  - id: "3128-gate-input-unavailable"
+    what: a gate that can't read a recorded artifact ends the cycle gate_input_unavailable, which a Campaign reads on rows 10 and 11, and the ending carries its detail (SIP-0109 §24ei)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.continuation import ENVIRONMENT_ENDINGS, CycleEnding
+      from squadops.campaigns.progress import _ENDING_DECLARED_BY_STOP
+      from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+      from squadops.cycles.lifecycle import STATUS_OF_ENDING
+      stop = CycleStopReason.GATE_INPUT_UNAVAILABLE
+      print(_ENDING_DECLARED_BY_STOP[stop] in ENVIRONMENT_ENDINGS, sorted(e.value for e in ENVIRONMENT_ENDINGS), STATUS_OF_ENDING[stop].value, RecordedEnd("c", "r", stop, "art_1").detail)
+    expect: "True ['gate_input_unavailable', 'held_store'] failed art_1"
   - id: "3236-owner-cancel"
     what: a cycle's cancel, a run's and a Campaign's abort ask the remote operations they own to stop; a result after the cancel is kept as the late one; a failed ask is never answered as none out (SIP-0117 R5.30)
     container: squadops-runtime-api

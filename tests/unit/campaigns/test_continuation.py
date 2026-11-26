@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 import pytest
 
 from squadops.campaigns.continuation import (
+    ENVIRONMENT_ENDINGS,
     CampaignCounters,
     CampaignLimit,
     ContinuationDecision,
@@ -477,6 +478,50 @@ def test_a_cycle_a_skill_stopped_is_abandoned_uncounted(kind, count_overrides, e
         CAMPAIGN,
         counters(**count_overrides),
         EndedCycle(CYCLE, kind, CycleEnding.SKILL_STOPPED),
+        assessment(None),
+    )
+
+    assert shape(decision) == expected
+
+
+@pytest.mark.parametrize("ending", sorted(ENVIRONMENT_ENDINGS))
+@pytest.mark.parametrize(
+    ("kind", "count_overrides", "expected"),
+    [
+        (CycleKind.INCREMENT, {}, (10, PendingAction.RETRY, _GO, None)),
+        (CycleKind.REPAIR, {}, (10, PendingAction.RETRY, _GO, None)),
+        # The retries spent: the owner is asked, and the escalation's row names the ending.
+        (CycleKind.INCREMENT, dict(retry_cycles=1), (11, PendingAction.ESCALATE, None, None)),
+        # Counted toward no unaccepted limit: at the limit's edge it is still retried, where a
+        # counted ending would end the campaign at row 4.
+        (CycleKind.INCREMENT, dict(unaccepted_increments=1), (10, PendingAction.RETRY, _GO, None)),
+        # Never row 6's new proposal, with a failed proposal already on the count.
+        (
+            CycleKind.INCREMENT,
+            dict(failed_proposals_in_row=1),
+            (10, PendingAction.RETRY, _GO, None),
+        ),
+    ],
+    ids=[
+        "increment",
+        "repair",
+        "retries-spent",
+        "at-the-unaccepted-limit",
+        "after-a-failed-proposal",
+    ],
+)
+def test_an_ending_that_is_the_environments_is_retried_then_escalated_uncounted(
+    ending, kind, count_overrides, expected
+):
+    """§24bw and §24ei (#3128), rows 10 and 11, for each ending of ``ENVIRONMENT_ENDINGS``. Bugs
+    caught: a gate that couldn't read its recorded input decided by row 6 (proposed again) or
+    row 18 (the increment abandoned), so the vault's fault is charged to the squad's work; and a
+    second environment ending added beside ``held_store`` with its own ``is`` check, which the
+    next one would miss."""
+    decision = campaign_continuation_decision(
+        CAMPAIGN,
+        counters(**count_overrides),
+        EndedCycle(CYCLE, kind, ending),
         assessment(None),
     )
 

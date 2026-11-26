@@ -42,6 +42,10 @@ class CycleStopReason(StrEnum):
     GATE_DECISION_UNRECOGNIZED = "gate_decision_unrecognized"
     #: The inter-workload gate raised before any decision (#2213): a defect, never an approval.
     GATE_FAILED = "gate_failed"
+    #: #3128 (SIP-0109 §24ei): the gate between workloads couldn't read an artifact the run's
+    #: record names. A fault outside the work, never a finding about the plan: the ending's
+    #: ``detail`` names the artifact, and a Campaign retries it (§10 rows 10 and 11).
+    GATE_INPUT_UNAVAILABLE = "gate_input_unavailable"
     #: #2890 (SIP-0109 §24cz): the implementation run ended at its qa task because a criterion's
     #: test already passes on the campaign branch's head. The run declares it in its terminal
     #: decision (``TerminalKind.CRITERIA_NOT_CHECKABLE``); the completion boundary reads it.
@@ -110,8 +114,12 @@ class CycleEnd:
 class RecordedEnd:
     """One ending of a cycle as the completion boundary recorded it, before its campaign was told
     (SIP-0109 §12a, #1803). What a re-entry reads: never a stop reason reconstructed from the
-    cycle's runs, which a gate rejection and a failed run can leave looking alike."""
+    cycle's runs, which a gate rejection and a failed run can leave looking alike.
+
+    ``detail`` is what the stop names beyond its reason, for the stops that have something to
+    name (#3128): the artifact a gate couldn't read. ``None`` for every other ending."""
 
     cycle_id: str
     last_run_id: str
     stopped_because: CycleStopReason
+    detail: str | None = None

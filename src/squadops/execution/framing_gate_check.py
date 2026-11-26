@@ -48,7 +48,7 @@ from squadops.cycles.rejection_baseline import (
     REJECTION_FILENAME,
     RejectionClassifier,
 )
-from squadops.cycles.vault_reads import retrieve_or_absent
+from squadops.cycles.vault_reads import retrieve_recorded
 from squadops.stacks.scaffold import InterfaceManifest, scaffold_stack_for
 
 logger = logging.getLogger(__name__)
@@ -131,10 +131,12 @@ class FramingGateCheck:
         classifier = RejectionClassifier()
         contract = None  # set in bind mode below; feeds the soft-violation log
         for ref_id in tuple(run.artifact_refs or ()):
-            got = await retrieve_or_absent(self._artifact_vault, ref_id)
-            if got is None:
-                continue
-            ref, content_bytes = got
+            # #3128 (SIP-0109 §24ei): a ref of the run the vault can't return ends the cycle as
+            # the environment's, naming it. Skipped, it left the gate to reject the plan as
+            # "no plan" or "no manifest" and the squad to re-roll for the vault's fault.
+            ref, content_bytes = await retrieve_recorded(
+                self._artifact_vault, ref_id, what="an artifact of the run its gate reads"
+            )
             artifact_type = getattr(ref, "artifact_type", None)
             if ref.filename == "implementation_plan.yaml" or (
                 artifact_type == "control_implementation_plan"
@@ -390,8 +392,8 @@ class FramingGateCheck:
             contract = await self._load_contract_for_run(cycle, run, ref=run_contract_ref)
             if contract is None:
                 errors.append(
-                    "verification_contract: contract_ref is seeded but the contract is "
-                    "missing or unparseable — bind mode cannot validate the plan"
+                    "verification_contract: contract_ref is seeded but the contract doesn't "
+                    "parse — bind mode cannot validate the plan"
                 )
             else:
                 binding_content = (

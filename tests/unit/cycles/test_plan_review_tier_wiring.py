@@ -155,7 +155,9 @@ class _Vault:
         self.stored[artifact_id] = (dataclasses.replace(ref, promotion_status="promoted"), content)
 
 
-def _run(run_id: str, *decisions: GateDecision) -> Run:
+def _run(run_id: str, *decisions: GateDecision, merge_stored: bool = True) -> Run:
+    """``merge_stored=False`` is a framing that stored no merge decisions: its record names
+    none. A run that named one its vault didn't hold would be a vault fault (#3128)."""
     return Run(
         run_id=run_id,
         cycle_id="cyc_tier",
@@ -164,7 +166,7 @@ def _run(run_id: str, *decisions: GateDecision) -> Run:
         initiated_by="system",
         resolved_config_hash="cfg",
         workload_type="framing",
-        artifact_refs=("art_plan", "art_manifest", "art_merge"),
+        artifact_refs=("art_plan", "art_manifest") + (("art_merge",) if merge_stored else ()),
         gate_decisions=decisions,
     )
 
@@ -277,7 +279,7 @@ async def _reach_the_gate(
 
     from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
-    framing = _run("run_frame")
+    framing = _run("run_frame", merge_stored=merge is not None)
     registry = AsyncMock()
     registry.list_runs.return_value = [*earlier_framings, framing]
     registry.record_gate_decision.side_effect = lambda run_id, decision: framing

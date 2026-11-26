@@ -27,9 +27,20 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   - The vault's own `ArtifactNotFoundError` and `ArtifactUnreadableError`, raised by a read in another package
     that a run reaches, end the run `infrastructure_failed` with the same classifications. They ended it `other`.
   - A guard, `tests/unit/architecture/test_executor_vault_reads_are_declared.py`, refuses a bare
-    `vault.retrieve` or a `retrieve_or_absent` in `squadops.execution`. It names five reads still pending: the
-    four at the gate between workloads and the bound contract's loader, which the gate shares. They close #3128
-    with the cycle's ending.
+    `vault.retrieve` or a `retrieve_or_absent` in `squadops.execution`.
+- **A gate that can't read its recorded input ends the cycle as the environment's** (#3128; SIP-0109 §24ei;
+  the 2.9 plan's item 4): five reads at the gate between workloads read an artifact the vault couldn't return as
+  one that wasn't there. The gate then found "no plan" or "no manifest", rejected the plan, and the squad re-rolled
+  its framing for the vault's fault.
+  - The cycle now ends `gate_input_unavailable`, status `failed`, and its recorded ending names the artifact
+    (`cycle_ends.detail`, migration 2203). Any other raise at the gate still ends `gate_failed`.
+  - A Campaign reads it on §10's rows 10 and 11, as it reads a cycle held on the store: retried while retry
+    cycles remain, then escalated, and counted toward no limit. The decision's row carries `ending_detail`.
+  - The five reads: the framing gate's scan of the run's artifacts, the manifest a run authored, the seeded
+    manifest, the run's merge decisions, and the contract the cycle is bound to. One that is read and doesn't
+    parse is decided as before. The gate's error for a seeded contract now says it "doesn't parse".
+  - Nine plan-gate tests had fixtures naming artifacts their fake vault never held, the bound contract among
+    them, so they ran in bind mode without one. Each fixture now holds what its refs name.
 
 ## [2.8.1] — 2026-11-20
 
