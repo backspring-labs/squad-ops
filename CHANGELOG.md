@@ -43,6 +43,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     correction starts.
   - A suite the image ran and failed, which the runner may overrule (#2818), is still a failed attempt.
     `dispatch_with_retry` takes a required `hand_off`; `dispatch_task` is unchanged.
+- **A requalification names a tool whose definition changed** (#3230; SIP-0117 R5.31; the 2.9 plan's item 11):
+  a qualification record held one digest for Studio's whole tool list, so a tool redescribed under the same name
+  read `tools added [], removed []`. On 2026-11-20 two such changes were found only by diffing dumps by hand.
+  - The record (schema `squadops.studio-qualification/3`) holds each tool's own digest and `tools_changed`.
+  - The worker's refusal names the tools that differ: `(changed script_read)`, with added and removed beside it.
+  - A pin written under `/2` still pins. Against it the comparison reads unavailable, and the record that
+    replaces it holds `tools_changed: null`, never an empty list.
 - **A recorded artifact the vault can't return ends the run by name** (#3128, the 2.9 plan's item 4): the
   executor's reads inside a run caught a failed retrieval, logged it and went on. The run then continued without
   its plan, its skeleton, a checkpoint's file or a seed, and a PRD that couldn't be read was handed to every
