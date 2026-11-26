@@ -10,6 +10,7 @@ real one on a memory store. The fixtures live in tests only.
 from __future__ import annotations
 
 import dataclasses
+from datetime import datetime
 from typing import Any
 
 import pytest
@@ -17,6 +18,7 @@ import pytest
 from adapters.remote_execution.memory_worker_registry_store import MemoryWorkerRegistryStore
 from squadops.api.routes.cycles import cycles as route
 from squadops.capabilities.skillsets import ToolRequest
+from squadops.capabilities.tool_checks import AgentRemoteExecution
 from squadops.cycles.skillset_coverage import cycle_coverage
 from squadops.ports.tool_authority import BrokenRule
 from squadops.remote_execution import leasing
@@ -65,6 +67,22 @@ async def _registry(*, online: bool) -> WorkerRegistry:
 #: A runtime that binds remote execution: the port's presence is all the check reads (#3159).
 BOUND = object()
 
+HEARD_AT = datetime(2026, 11, 26, 15, 0)
+
+
+def _agents_say(provider: str | None = "runtime_api", *, fresh: bool = True):
+    """Every agent's own report of the remote execution it binds (#3235): the provider it last
+    said, at a named build, heard at ``HEARD_AT``."""
+
+    async def report(agent_id: str) -> AgentRemoteExecution:
+        return AgentRemoteExecution(provider, "3f2a91c", HEARD_AT, fresh)
+
+    return report
+
+
+async def _agents_are_silent(agent_id: str) -> None:
+    return None
+
 
 async def _preflight(config: dict, **tools: Any) -> tuple[str, ...]:
     """Each refusal's code and message for ``config`` with ``tools``; ``()`` when created. The
@@ -72,7 +90,10 @@ async def _preflight(config: dict, **tools: Any) -> tuple[str, ...]:
     decision = await route._tool_preflight_decision(
         PROFILE,
         config,
-        route.ToolPreflight(project_id="prj-1", **{"remote_execution": BOUND, **tools}),
+        route.ToolPreflight(
+            project_id="prj-1",
+            **{"remote_execution": BOUND, "agent_report": _agents_say(), **tools},
+        ),
     )
     return tuple(f"{f.code}: {f.message}" for f in decision.blocking)
 
@@ -136,6 +157,76 @@ async def test_a_tool_no_worker_can_run_is_refused_as_availability_never_coverag
 
 async def _empty_registry() -> WorkerRegistry:
     return WorkerRegistry(MemoryWorkerRegistryStore(), clock=Clock())
+
+
+_SAID = "at revision 3f2a91c, last heard at 2026-11-26T15:00:00"
+
+
+@pytest.mark.parametrize(
+    ("agent_report", "says"),
+    [
+        (
+            _agents_say("none"),
+            "agent eve, which runs it, binds no remote execution: expected a provider, and it "
+            f"reports remote_execution.provider none ({_SAID}). This runtime binds one, so the "
+            "agent wasn't recreated when the provider was set",
+        ),
+        (
+            _agents_say(None),
+            f"agent eve, which runs it, doesn't say what remote execution it binds ({_SAID}): "
+            "it was built before agents reported it",
+        ),
+        (
+            _agents_say(fresh=False),
+            f"agent eve, which runs it, isn't being heard from ({_SAID})",
+        ),
+        (
+            _agents_are_silent,
+            "agent eve, which runs it, has sent this runtime no heartbeat, so whether it binds "
+            "remote execution can't be read",
+        ),
+        (None, "this runtime keeps no record of what its agents report, so none can be read"),
+    ],
+    ids=["binds-none", "built-before-it-reported", "not-heard-from", "no-heartbeat", "no-reports"],
+)
+async def test_a_tool_its_own_agent_cant_ask_for_is_refused_naming_the_agent(
+    config, agent_report, says
+):
+    """#3235, 2026-11-19: the runtime was switched to ``runtime_api`` and rebuilt, the QA agent
+    still bound no port, and the cycle was created. Its in-run evaluation then read "no remote
+    execution port" as an unverified check on the candidate, while the Campaign's own plays
+    ran. Bug caught: reading the agent's capability from the runtime's provider, with a worker
+    online and every other check passing."""
+    [refusal] = await _preflight(
+        config,
+        authorities={"fixture-editor": _Allows()},
+        worker_registry=await _registry(online=True),
+        agent_report=agent_report,
+    )
+
+    assert refusal.startswith("skillset_availability: tool play_scenario (fixture-editor")
+    assert says in refusal
+
+
+async def test_the_cycle_is_created_once_its_agent_is_recreated_with_the_provider(config):
+    """The recovery. Bug caught: a refusal that outlives its cause, read from anything but the
+    agent's newest report."""
+    said = {"provider": "none"}
+
+    async def report(agent_id: str) -> AgentRemoteExecution:
+        return AgentRemoteExecution(said["provider"], "3f2a91c", HEARD_AT, True)
+
+    tools = {
+        "authorities": {"fixture-editor": _Allows()},
+        "worker_registry": await _registry(online=True),
+        "agent_report": report,
+    }
+    before = await _preflight(config, **tools)
+    said["provider"] = "runtime_api"
+    after = await _preflight(config, **tools)
+
+    assert len(before) == 1 and "binds no remote execution" in before[0]
+    assert after == ()
 
 
 async def test_an_authorized_tool_with_an_online_worker_creates_the_cycle(config):
@@ -213,6 +304,7 @@ async def test_the_create_preflight_refuses_the_cycle_with_the_tool_and_its_loca
             tools=route.ToolPreflight(
                 authorities={"fixture-editor": _Allows()},
                 worker_registry=await _registry(online=online),
+                agent_report=_agents_say(),
                 remote_execution=remote_execution,
                 project_id="prj-1",
             ),
@@ -240,6 +332,13 @@ def test_creation_reads_the_runtimes_binding_from_the_request():
 
     assert route.CreationPorts.of_request(request(remote_execution=BOUND)).remote_execution is BOUND
     assert route.CreationPorts.of_request(request()).remote_execution is None
+    # #3235: and the agents' own reports, from the health checker that keeps their heartbeats.
+    checker = SimpleNamespace(agent_remote_execution=_agents_say("none"))
+    assert (
+        route.CreationPorts.of_request(request(health_checker=checker)).agent_report
+        is checker.agent_remote_execution
+    )
+    assert route.CreationPorts.of_request(request()).agent_report is None
 
 
 # ---------------------------------------------------------------- at dispatch (part 2)
@@ -262,16 +361,24 @@ def _operation_task(skillset_digest: str):
 
 
 @pytest.mark.parametrize(
-    ("online", "bound", "says"),
+    ("online", "bound", "agent_says", "says"),
     [
-        (True, True, None),
-        (False, True, "fixture-editor/play_scenario and is offline"),
-        (True, False, "this runtime binds no remote execution (remote_execution.provider none)"),
+        (True, True, "runtime_api", None),
+        (False, True, "runtime_api", "fixture-editor/play_scenario and is offline"),
+        (
+            True,
+            False,
+            "runtime_api",
+            "this runtime binds no remote execution (remote_execution.provider none)",
+        ),
+        # #3235: the capability lost during the run. The agent was recreated without the
+        # provider after the cycle was created, and its task isn't sent to it.
+        (True, True, "none", "agent eve, which runs it, binds no remote execution"),
     ],
-    ids=["available", "a worker offline", "no remote execution bound"],
+    ids=["available", "a worker offline", "no remote execution bound", "its agent binds none"],
 )
 async def test_an_operation_tasks_tool_is_read_available_again_as_it_is_dispatched(
-    monkeypatch, online, bound, says
+    monkeypatch, online, bound, agent_says, says
 ):
     """§8, entered at the executor's ``_require_tool_available``, which runs after a task's
     preconditions. Bugs caught: a worker that went offline after creation leaving the operation
@@ -289,6 +396,7 @@ async def test_an_operation_tasks_tool_is_read_available_again_as_it_is_dispatch
         _worker_registry=await _registry(online=online),
         _sandbox=None,
         _remote_execution=BOUND if bound else None,
+        _agent_report=_agents_say(agent_says),
     )
     method = executor_module.DispatchedFlowExecutor._require_tool_available
     task = _operation_task(catalog["fixture-qa"].digest)
