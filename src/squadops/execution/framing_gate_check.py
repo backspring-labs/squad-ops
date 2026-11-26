@@ -360,6 +360,13 @@ class FramingGateCheck:
                     "validate_reserved_paths", parsed_plan.validate_reserved_paths(profile)
                 )
             )
+            # SIP-0112 H.4 point 3 (#3182): a qa.test's file is one a runner of the product
+            # collects. A re-roll is told what each collects.
+            errors.extend(
+                classifier.collect(
+                    "validate_qa_suite_collected", parsed_plan.validate_qa_suite_collected(profile)
+                )
+            )
 
         # SIP-0098 98.3: bind-mode contract validation. A seeded contract_ref switches the
         # cycle to bind mode — the plan must bind the contract's covered-file criteria by
