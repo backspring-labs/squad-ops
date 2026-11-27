@@ -619,3 +619,37 @@ nothing counted.
 **What it doesn't show:** state held outside Studio's datamodel and Lua state, such as a file the worker writes;
 isolation between plays on two workers; and anything about marks a real candidate might leave that these seven
 don't resemble.
+
+### 13c. The definitions of cases 1, 9, 10, 11 and 14 (2026-11-27)
+
+**What changed.** §7 named each case's Campaign by what it does. This names the files, before any of them is
+created, and the one limit that differs from the run each is copied from. Nothing about a case's pass or fail
+condition changes.
+
+**Who ruled.** The Spark lane, which creates and starts the Campaigns as the supervisor (D13).
+
+| Case | Definition | What it is |
+|---|---|---|
+| 1, and the Campaign cases 2, 5, 6 and 8 are acted out on | `2-9-0-certification-campaign.yaml` | The 2.8 counted run's definition, limit for limit, but `max_elapsed_s` 14,400 where that had 7,200 |
+| 9 | `2-9-0-case-9-attributed-setup-failure-campaign.yaml` | The 2.8.1 row-8 diagnostic's definition with its proposal profile changed to `campaign-increment-source-client-stops-corrected`, and nothing else |
+| 10 | `2-9-0-case-10-unattributed-setup-failure-campaign.yaml` | The same definition with its proposal profile changed to `campaign-increment-source-client-stalls`, and nothing else |
+| 11 | `2-8-1-row8-diagnostic-campaign.yaml` | The 2.8.1 diagnostic as it ran on 2026-11-19, unchanged |
+| 14 | `2-9-0-cut-shakeout-fastapi-react.yaml` and `2-9-0-cut-shakeout-nextjs.yaml` | The 2.8.1 cut pair's set configs: the same squad, request profile, gate policy and loaded-check scripts. Their names, records directories and notes changed, and all 321 loaded-check rows at registration are tracked |
+
+**Why case 1's elapsed limit is doubled.** The elapsed-time guard paused both 2.8 rehearsals that reached a
+repair, and a limit's pause is the owner's to resume (D16). A Campaign paused by a guard set for an attended run
+would end an unattended case for a reason that isn't the case's. The 2.8.1 diagnostic used the same value for
+the same reason.
+
+**Case 14's exit rule,** stated in each config before its first launch: one shakeout per stack on one deploy,
+and the pair passes when each cycle is functional (a verdict, a passing boot audit, no intervention, a seeded
+tree matching its manifest) with no new seam finding. It runs on the final deploy and needs nothing of the Mac,
+so it may run before the Campaign cases' rehearsal.
+
+**The same file serves a rehearsal and the window.** A rehearsal's Campaign is uncounted by when it runs (§6),
+not by its definition, so no second file can drift from the first.
+
+**What case 10's Campaign does after the cycle the case reads.** The faulted increment's cycle ends
+`blocked_unverified` with no correction, which is what case 10 reads. The Campaign then routes §10 row 8, as it
+does for any unread candidate, and its repair cycle is built without the fault. That repair is the Campaign's
+own design and is reported, and it is not part of case 10's pass condition.
