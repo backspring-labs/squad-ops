@@ -17,6 +17,7 @@ from adapters.remote_execution.factory import create_worker_registry_store
 from squadops.remote_execution.registry import WorkerRegistry
 from tests.integration.conftest import integration_postgres_dsn
 from tests.unit.remote_execution.registry_contract import (
+    as_served,
     Clock,
     WorkerRegistryContract,
     passing,
@@ -82,7 +83,8 @@ async def test_a_lease_outlives_the_runtime_that_granted_it(pool):
     accepted = await restarted.submit_result(claim.fence, passing())
 
     assert (reading.refusal, accepted.refusal) == (None, None)
-    assert (await restarted.operation(queued.operation_id)).result == passing()
+    # #3200: who served it is the registry's word, written at acceptance.
+    assert (await restarted.operation(queued.operation_id)).result == as_served(passing())
 
 
 async def test_the_table_itself_refuses_a_second_open_claim_for_a_worker(pool):
