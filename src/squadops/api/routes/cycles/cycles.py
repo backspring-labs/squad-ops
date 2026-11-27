@@ -38,6 +38,7 @@ from squadops.api.runtime.deps import (
     get_cycle_registry,
     get_deploy_registry,
     get_flow_executor,
+    get_health_checker,
     get_llm_port,
     get_memory_records,
     get_memory_store,
@@ -63,6 +64,7 @@ from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.capabilities.skillsets import packaged_skillsets
 from squadops.capabilities.tool_checks import (
+    AgentReport,
     authorization_findings,
     availability_findings,
     required_tools,
@@ -235,6 +237,10 @@ class ToolPreflight:
     #: #3159: the runtime's own way to a worker, ``None`` when it binds none. A worker's tool is
     #: unavailable without it, whatever the registry lists.
     remote_execution: Any | None = None
+    #: #3235: each agent's own report of the remote execution it binds, read by its id. The
+    #: agent that runs a worker's tool asks through its own port, which the runtime's says
+    #: nothing of. ``None`` on a runtime that keeps no agent reports.
+    agent_report: AgentReport | None = None
     project_id: str | None = None
     #: SIP-0116 §17n (#3042): what an authority's ``ProductView`` is read from. The cycle's pinned
     #: source (``None`` on a sample application, so its authorities are given no view), the
@@ -278,6 +284,7 @@ async def _tool_preflight_decision(
         worker_registry=tools.worker_registry,
         sandbox_client=tools.sandbox_client,
         remote_execution=tools.remote_execution,
+        agent_report=tools.agent_report,
     )
     return PreflightDecision(
         blocking=tuple(
@@ -563,6 +570,8 @@ class CreationPorts:
     #: #3159: the runtime's remote-execution port, ``None`` under ``remote_execution.provider
     #: none``, where no operation is sent to a worker the registry lists.
     remote_execution: Any | None = None
+    #: #3235: what each agent reports of its own remote-execution port, from its heartbeat.
+    agent_report: AgentReport | None = None
     #: SIP-0116 §17n (#3042): the managed clone a repository-backed cycle's product is read from,
     #: for the authorities its tools are checked against. Optional, as the vault is: a runtime
     #: with none refuses a tool whose authority asks for the product, naming why.
@@ -591,6 +600,7 @@ class CreationPorts:
             worker_registry=get_worker_registry(request),
             sandbox_client=get_sandbox_client(request),
             remote_execution=get_remote_execution(request),
+            agent_report=optional(lambda r: get_health_checker(r).agent_remote_execution),
             source_repository=optional(get_source_repository),
         )
 
@@ -907,6 +917,7 @@ async def prepare_cycle(
             worker_registry=ports.worker_registry,
             sandbox_client=ports.sandbox_client,
             remote_execution=ports.remote_execution,
+            agent_report=ports.agent_report,
             project_id=project_id,
             source_context=source_context,
             source_repository=ports.source_repository,
