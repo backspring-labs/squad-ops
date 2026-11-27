@@ -39,6 +39,7 @@ _UNWIRED = {
     # SIP-0117 (#3053, #3044): how the runtime reaches a worker; ``None``, readings not executed.
     "remote_execution": None,
     "worker_registry": None,
+    "agent_report": None,
 }
 _REQUIRED = (*_UNWIRED, "task_timeout")
 

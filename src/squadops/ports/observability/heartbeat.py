@@ -23,6 +23,7 @@ class AgentHeartbeatReporter(ABC):
         current_task_id: str | None = None,
         version: str | None = None,
         revision: str | None = None,
+        remote_execution: str | None = None,
         tps: float | None = None,
         memory_count: int | None = None,
     ) -> None:
