@@ -31,6 +31,7 @@ result.
 
     docker cp scripts/dev/measured_play_set.py squadops-runtime-api:/tmp/
     docker cp scenario.json squadops-runtime-api:/tmp/
+    docker exec -w /app squadops-runtime-api python /tmp/measured_play_set.py play --dry-run ...
     docker exec -w /app squadops-runtime-api python /tmp/measured_play_set.py play \\
         --label 2.9-before --project <project> --commit <full sha> \\
         --scenario /tmp/scenario.json --scenario-digest sha256:<frozen digest> --plays 20 \\
@@ -485,6 +486,7 @@ async def _play(args: argparse.Namespace) -> int:
     from adapters.remote_execution.game_dev_roblox_studio.runner import OPERATION, PROVIDER
     from adapters.remote_execution.game_dev_roblox_studio.vocabulary import VOCABULARY
     from adapters.tools.factory import create_source_repository
+    from squadops.bootstrap.secrets import secret_provider_for
     from squadops.config import load_config
     from squadops.projects.configuration import baseline_tree
     from squadops.projects.registration import LocatorPolicy
@@ -500,7 +502,7 @@ async def _play(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    config = load_config()
+    config = load_config(secret_provider_factory=secret_provider_for)
     if config.cycles.registry_provider != "postgres":
         print("this runtime's registry isn't in Postgres, so no worker would see the set",
               file=sys.stderr)  # fmt: skip
@@ -526,13 +528,31 @@ async def _play(args: argparse.Namespace) -> int:
         )
         staged, not_staged = staged_text(checkout.files)
         store = create_worker_registry_store("postgres", pool=pool)
+        registry = WorkerRegistry(store)
+        if args.dry_run:
+            # Everything the set needs, read and said, and nothing queued.
+            no_worker = await registry.no_worker_for(PROVIDER, OPERATION)
+            print(
+                json.dumps(
+                    {
+                        "dry_run": True,
+                        "scenario": {"name": scenario_file.name, "digest": scenario.digest},
+                        "commit": checkout.commit,
+                        "files_staged": len(staged),
+                        "files_not_staged": len(not_staged),
+                        "worker": "serving" if no_worker is None else no_worker.reason,
+                    },
+                    indent=2,
+                )
+            )
+            return 0 if no_worker is None else 1
         run = uuid.uuid4().hex[:8]
         requests = set_requests(
             args.label, run, args.plays,
             source_files=staged, scenario=scenario, provider=PROVIDER, operation=OPERATION,
         )  # fmt: skip
         plays, stopped = await run_set(
-            WorkerRegistry(store),
+            registry,
             store,
             requests,
             {"cycle_id": f"{OWNER_PREFIX}{args.label}:{run}", "requester": "measured_play_set"},
@@ -575,6 +595,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     play.add_argument("--plays", required=True, type=int)
     play.add_argument("--play-timeout-seconds", type=float, default=600.0)
     play.add_argument("--gap-seconds", type=float, default=0.0)
+    play.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="read the scenario, the tree and whether a worker serves it, and queue nothing",
+    )
     pair = commands.add_parser("compare", help="read a before set's record and an after set's")
     pair.add_argument("before")
     pair.add_argument("after")
