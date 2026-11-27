@@ -47,6 +47,10 @@ _CUT = {
     # and typescript-eslint 8.71). The delivered-lint runner's output on a fixture tree is byte-identical
     # under both. Lighthouse, axe, the driver and the Chromium pin are -7's.
     "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-8": "86d1867e77a07b5d",
+    # #3101 (the 2.9 plan's item 14): ruff 0.16.6 to 0.17.5, the image's and the qa image's
+    # together. Lighthouse, axe, ESLint, the driver and the Chromium pin are -8's. The lint
+    # series on -8 or earlier stays its own.
+    "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.17-eslint10.12-9": "866d593d1d292544",
 }
 
 

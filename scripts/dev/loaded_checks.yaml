@@ -1832,7 +1832,7 @@ checks:
       print(repair_not_applied_in_round([entry], 1), disposition_for(Vocabulary.FAILURE_CLASSIFICATION, "slot_subject_dropped").attribution.value)
     expect: "True producer_output_failure"
   - id: "2637"
-    what: the sandbox's scenario runner names the evaluator's tag (-8 since GHSA-g3hv-75wg-m249's minimatch pin) and refuses a scored page without -7's finer reading, rather than reading it as zero (SIP-0113 §10y)
+    what: the sandbox's scenario runner names the evaluator's tag (-9 since #3101's ruff 0.17) and refuses a scored page without -7's finer reading, rather than reading it as zero (SIP-0113 §10y)
     container: squadops-sandbox-service
     code: |
       from squadops.sandbox.environment import EVALUATOR_IMAGE
@@ -1845,7 +1845,7 @@ checks:
       except ValueError as e:
           refused = "refused" if "-7" in str(e) else f"refused otherwise: {e}"
       print(EVALUATOR_IMAGE.rsplit("-", 1)[-1], refused)
-    expect: "8 refused"
+    expect: "9 refused"
   - id: "2637-runtime"
     what: the runtime compares failing ids as introduced and resolved, and the proposal is shown only the measures it was shown before -7 (SIP-0113 §10y)
     container: squadops-runtime-api
@@ -2664,7 +2664,7 @@ checks:
       from squadops.capabilities.skillsets import ToolRequest
       from squadops.capabilities.tool_checks import unavailable
       tool = ToolRequest("play_scenario", "fixture-editor", "worker")
-      print(asyncio.run(unavailable(tool, worker_registry=object(), sandbox_client=None, remote_execution=None)))
+      print(asyncio.run(unavailable(tool, agent_id="eve", worker_registry=object(), sandbox_client=None, remote_execution=None, agent_report=None, agent_heard_from_now=True)))
     expect: "this runtime binds no remote execution (remote_execution.provider none)"
   - id: "3160-cancelled-run-asks-nothing"
     what: the scenario baseline step reads the run's status before it asks a provider
@@ -2882,7 +2882,7 @@ checks:
       from adapters.remote_execution.game_dev_roblox_studio.studio_app import StudioApp
       held = inspect.getsource(RobloxStudioRunner._reset_held)
       print(sorted(ProvedOn("v", "t", "c").named("qualified")), q.SCHEMA[-2:], "names no channel" in inspect.getsource(q.Qualifications.current), held.count("self._moved_channel("), hasattr(StudioApp, "channel"))
-    expect: "['qualified.studio_channel', 'qualified.studio_tools', 'qualified.studio_version'] /2 True 2 True"
+    expect: "['qualified.studio_channel', 'qualified.studio_tools', 'qualified.studio_version'] /3 True 2 True"
   - id: "3199-scenario-skill-rules"
     what: the strategy agent's packaged scenario skill carries the six rules, its self-review, and whole examples the rails read, each quoting the sentence it reads (SIP-0118 R5.8)
     container: squadops-nat
@@ -2957,3 +2957,13 @@ checks:
       from squadops.ports.remote_execution import RemoteExecutionPort
       print("OperationOwner(context.cycle_id)" in inspect.getsource(h), list(inspect.signature(RemoteExecutionPort.run_operation).parameters))
     expect: "True ['self', 'request', 'owner']"
+  - id: "3230-tools-changed-are-named"
+    what: a qualification record holds each tool's digest and names the tools changed, and a comparison against a record without them reads unavailable (SIP-0117 R5.31)
+    container: squadops-runtime-api
+    code: |
+      from adapters.remote_execution.game_dev_roblox_studio import qualification as q
+      from adapters.remote_execution.game_dev_roblox_studio.runner import ProvedOn, _tool_difference
+      from adapters.remote_execution.game_dev_roblox_studio.session import ToolCheck, tool_changes
+      check = ToolCheck(2, "d", ("a", "b"), (("a", "1"), ("b", "2")))
+      print(q.SCHEMA[-2:], sorted(q._KEYS[q.SCHEMA] - q._KEYS[q.SCHEMA_WITHOUT_TOOL_DIGESTS]), tool_changes((("a", "1"), ("b", "1")), check.digests).named(), "unavailable" in _tool_difference(check, ProvedOn("v", "t", "c")))
+    expect: "/3 ['tool_digests', 'tools_changed'] changed b True"

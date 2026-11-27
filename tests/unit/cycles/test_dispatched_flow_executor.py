@@ -1376,6 +1376,7 @@ class TestRunCompletionActivityWiring:
             goal_set_registry=None,
             remote_execution=None,
             worker_registry=None,
+            agent_report=None,
             focus_lease_port=focus_lease_port,
         )
 

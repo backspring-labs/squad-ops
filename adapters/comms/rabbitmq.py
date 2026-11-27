@@ -34,6 +34,20 @@ _SUBSCRIBE_RECONNECT_BACKOFF = 0.5
 # live channel — then surface QueueError so the caller is never blocked forever.
 _PUBLISH_MAX_ATTEMPTS = 3
 _PUBLISH_RETRY_BACKOFF = 0.5
+
+
+def _said(error: BaseException | None) -> str:
+    """What a publish's failure says, for the log and the ``QueueError`` (#3101). A library's
+    exception whose own text can't be built is still the failure: it is named by its type and
+    arguments, and never replaces the publish's failure with a formatting error. aiormq's
+    returned-publish error reads its frame to describe itself, and one built without it raised
+    from ``str()`` inside this adapter's retry."""
+    try:
+        return str(error)
+    except Exception:  # noqa: BLE001 - the failure being described must stay the failure
+        return f"{type(error).__name__}{getattr(error, 'args', ())!r}"
+
+
 # #158: default poll window for the bounded consume() wait (how long a single
 # collect_messages() cycle blocks before returning). Tunable via the constructor.
 _DEFAULT_CONSUME_POLL_TIMEOUT = 1.0
@@ -229,17 +243,18 @@ class RabbitMQAdapter(QueuePort):
                         queue_name,
                         attempt,
                         _PUBLISH_MAX_ATTEMPTS,
-                        e,
+                        _said(e),
                     )
                     await asyncio.sleep(_PUBLISH_RETRY_BACKOFF * attempt)
 
+        why = _said(last_exc)
         logger.error(
             "Failed to publish message to queue %s after %d attempts: %s",
             queue_name,
             _PUBLISH_MAX_ATTEMPTS,
-            last_exc,
+            why,
         )
-        raise QueueError(f"Failed to publish message: {last_exc}") from last_exc
+        raise QueueError(f"Failed to publish message: {why}") from last_exc
 
     @staticmethod
     def _to_queue_message(

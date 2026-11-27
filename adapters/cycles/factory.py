@@ -188,6 +188,9 @@ def create_flow_executor(
     # SIP-0116 §8 (#3036): required, so the root says where an operation task's tool is read
     # available at dispatch. ``None``: no worker tool is, and such a task's run ends, naming it.
     worker_registry: Any,
+    # #3235: required, so the root says where an agent's own report of its remote execution is
+    # read at dispatch. ``None``: no worker tool is available, and such a task's run ends.
+    agent_report: Any,
 ) -> FlowExecutionPort:
     """Create a FlowExecutionPort adapter.
 
@@ -245,4 +248,5 @@ def create_flow_executor(
         goal_set_registry=goal_set_registry,
         remote_execution=remote_execution,
         worker_registry=worker_registry,
+        agent_report=agent_report,
     )

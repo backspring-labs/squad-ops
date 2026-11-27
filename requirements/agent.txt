@@ -11,8 +11,7 @@
 -r base.txt
 
 # Message queue
-aio-pika>=9.3.1,<10.1
-aiormq<7.1
+aio-pika>=10.2
 
 # Comms delivery record (#1977, SIP-Agent-Comms-Delivery-Guarantees §5.1/§5.3, amended 2026-10-15):
 # a task's attempt count and completion mark, in the Redis the stack already runs. A floor, as in
@@ -39,7 +38,7 @@ tree-sitter-typescript>=0.23
 
 # Reporting-only lint of the delivered app's Python (#1937; squadops.capabilities.delivered_lint).
 # A command, never imported; the qa image runs it, and no check reads what it finds.
-ruff==0.16.6
+ruff==0.17.5
 
 # Telemetry (#2203, #2204): the metrics and traces MetricsPort's OTel adapter exports to the
 # collector over OTLP. Only opentelemetry-api reached the image (pulled in by another package),
