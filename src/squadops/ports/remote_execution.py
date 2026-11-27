@@ -215,6 +215,16 @@ class OperationRunnerPort(ABC):
         """Run ``request``'s operation and return what it came to."""
 
     @abstractmethod
+    def running_with(self) -> Mapping[str, str]:
+        """What the run in progress has established, as its result's ``ran_with`` would carry
+        it if it returned now (SIP-0117 R5.30, #3236). A copy, holding a fact only once it has
+        been read, and nothing before a run begins.
+
+        The worker reads it for a result it builds itself: after it has stopped a run it
+        cancelled, or one that raised, and before it resets the tool. So a play stopped part
+        way names what it ran on, and never a fact it didn't reach."""
+
+    @abstractmethod
     async def reset(self) -> None:
         """Reconcile and reset: leave the tool as a new operation can start from, whatever an
         earlier one left behind. Raises when it can't, and then nothing is run on it."""
