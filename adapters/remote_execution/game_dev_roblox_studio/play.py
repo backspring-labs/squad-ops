@@ -35,7 +35,9 @@ import asyncio
 import json
 import math
 import re
+import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -125,9 +127,15 @@ async def observe(session: StudioMcpSession, studio_id: str, observation: Observ
 
 
 async def run_scenario(
-    session: StudioMcpSession, studio_id: str, declaration: ScenarioDeclaration
+    session: StudioMcpSession,
+    studio_id: str,
+    declaration: ScenarioDeclaration,
+    *,
+    timed: Callable[[str, float], None] | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> tuple[tuple[AssertionRecord, ...], PlayLog]:
-    """The declaration run in the play session that is running now: its records and its log."""
+    """The declaration run in the play session that is running now: its records and its log.
+    ``timed`` is told each action's name and how long it took (#3250), whether it held or not."""
     log = PlayLog(session_id=uuid.uuid4().hex)
     stopped = await _ready(session, studio_id)
     for phase, actions in (("setup", declaration.setup), ("steps", declaration.steps)):
@@ -137,7 +145,7 @@ async def run_scenario(
             entry: dict[str, Any] = {"action": action.action}
             getattr(log, phase).append(entry)
             try:
-                met = await _do(session, studio_id, action, entry)
+                met = await _timed(session, studio_id, action, entry, timed, clock)
             except (ActionFailed, StudioSessionError) as e:
                 entry["failed"] = str(e)
                 stopped = f"{phase} {index + 1} ({action.action}) couldn't be done: {e}"
@@ -265,6 +273,23 @@ async def _do(
         entry["met"] = met
         return met
     raise ActionFailed(f"the harness runs no action {action.action!r}")  # read declarations can't
+
+
+async def _timed(
+    session: StudioMcpSession,
+    studio_id: str,
+    action: Any,
+    entry: dict[str, Any],
+    timed: Callable[[str, float], None] | None,
+    clock: Callable[[], float],
+):
+    """``_do``, with how long the action took told to ``timed``, whether it held or raised."""
+    began = clock()
+    try:
+        return await _do(session, studio_id, action, entry)
+    finally:
+        if timed is not None:
+            timed(action.action, clock() - began)
 
 
 async def _until(
