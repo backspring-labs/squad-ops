@@ -476,7 +476,9 @@ instrument and took the readings the bar is set from.
 schema `squadops.play-stages/1`:
 - `stages`: seconds for each stage that ran, among `session_open_s`, `proof_s`, `front_s`, `identity_s`,
   `place_state_s`, `sync_s`, `marks_s`, `baseline_before_s`, `play_start_s`, `scenario_s`, `player_s`,
-  `console_s`, `stop_s`, `baseline_after_s`, `read_back_s` and `reset_s`. A stage that didn't run is absent;
+  `console_s`, `stop_s`, `baseline_after_s`, `read_back_s` and `reset_s`. A stage that didn't run is absent.
+  A stage timed more than once in a play is the sum: `console_s` is one console read at #3286, and three once
+  R5.32's Studio half (PR #3288) is on the worker;
 - `waits`: each of the scenario's own waits, in seconds;
 - `transactions`: how many times the transaction ran. It is 2 when the place had drifted and the play began
   again after a reset, and each stage is then the sum over both.
@@ -522,10 +524,15 @@ time misses it, since a hung daemon can still have containers at work.
 - **Two sets are comparable** when both start readings and both end readings meet their bars. All four are
   shown side by side in the record.
 
-**5. When the before set is taken.** After this amendment is on main, with the worker's checkout at or after
-`229c25fa`, the Spark's deploy rebuilt from main so that each result names who served it, and the Spark's
-provider set to `runtime_api` for the set. The worker's commit, the deploy's record id and the four host
-readings are written into the set's record beside the tool's own.
+**5. When the before set is taken.** After this amendment is on main, with the worker's checkout on main at
+or after the merge of R5.32's Studio half (PR #3288), the Spark's deploy rebuilt from main so that each result
+names who served it, and the Spark's provider set to `runtime_api` for the set. The worker's commit, the
+deploy's record id and the four host readings are written into the set's record beside the tool's own.
+
+**The two sets differ by the throughput change and nothing else on the worker.** That is why the before set
+waits for #3288: it adds two console reads to every play, and a before set without them would credit their
+cost to the change. Any other change to the worker's play path that merges between the sets is named in the
+record with its measured cost, or the before set is taken again after it.
 
 **Not built, said deliberately:** a separate timing of delivery. **Still to come, by a later amendment:** each
 isolation test of case 12 with what it reads. They read the throughput change, which isn't designed until the
