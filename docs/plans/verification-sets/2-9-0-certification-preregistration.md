@@ -450,6 +450,90 @@ Non-execution is counted beside failure in every readout.
 
 ## 13. Amendments
 
-None yet. Each is added here before the run it changes, with its date, what changed, the evidence and who ruled.
-Expected before the first measured play: the instrument's field names, the bar for comparable host readings and
-the isolation tests of cases 12 and 13; and, if check 4 finds the tool list moved, the new pin.
+Each is added here before the run it changes, with its date, what changed, the evidence and who ruled.
+Still expected: the isolation tests of case 12, before the first play they read; and, if check 4 finds the tool
+list moved, the new pin.
+
+### 13a. The measured sets: the instrument, the host's bar, and how a set is played and read (2026-11-27)
+
+**What changed.** Case 13 left three things to an amendment before the first measured play. This freezes two of
+them, and fixes how a set is played and read. Nothing measured has been played.
+
+**Who ruled.** The Spark lane, which the plan's item 13 has freeze the matched set. The MacBook lane built the
+instrument and took the readings the bar is set from.
+
+**The evidence.**
+- The instrument is on main (PR #3286, `229c25fa`). One live play with it took 97.2 s, and its fifteen stages
+  summed to 97.17 s, so the stages cover a play.
+- In that play the place's non-script state was read three times, 67.7 s of the 97.2 s. A stage could yield the
+  target, which is the plan's second step. It is one play and not the measurement.
+- A quiet reading of the Mac (2026-11-27, 01:21 ET, its stack stopped for six minutes, no model loaded, Studio
+  and the worker not running): load 1.17, 2.07 and 2.68 over 1, 5 and 15 minutes; free memory 80%; no container;
+  every other process together at 65.5% CPU. A reading one minute after the stack stopped still read 3.75 and
+  157.5%.
+
+**1. The instrument's fields, frozen as merged.** Each completed play carries an evidence item `stages.json`,
+schema `squadops.play-stages/1`:
+- `stages`: seconds for each stage that ran, among `session_open_s`, `proof_s`, `front_s`, `identity_s`,
+  `place_state_s`, `sync_s`, `marks_s`, `baseline_before_s`, `play_start_s`, `scenario_s`, `player_s`,
+  `console_s`, `stop_s`, `baseline_after_s`, `read_back_s` and `reset_s`. A stage that didn't run is absent.
+  A stage timed more than once in a play is the sum: `console_s` is one console read at #3286, and three once
+  R5.32's Studio half (PR #3288) is on the worker;
+- `waits`: each of the scenario's own waits, in seconds;
+- `transactions`: how many times the transaction ran. It is 2 when the place had drifted and the play began
+  again after a reset, and each stage is then the sum over both.
+
+**2. How a set is played.** By `scripts/dev/measured_play_set.py play`, on the Spark, inside its runtime's
+container:
+- **20 plays, one at a time, back to back,** each queued when the one before it has its result. One attempt
+  each: an interrupted play is recorded as it ended and is not retried.
+- **Each play is queued on the runtime's worker registry** with the request a cycle's own verification builds:
+  every text file of the pinned commit `0beaac09`, and the frozen scenario of §3's check 4. The tool refuses a
+  scenario file that doesn't freeze to that digest.
+- **The set owns its plays under its own name.** A measured set is no cycle, so nothing but the tool can cancel
+  them, and it does on any exit for every play it queued that has no result.
+- **A set is whole or it is taken again.** A set that stopped early, or in which any play didn't complete, is
+  not a measured set. It is recorded with what happened, and the whole set is played again from a start reading
+  that meets the bar. No play is patched in.
+- **A play that began again after a drift is counted as it ran,** and the set's record says how many did.
+
+**3. What is read, and from where.**
+- **Claim to completion,** the time the 20% target is read on: the runtime's own record of each operation, from
+  its attempt's claim to its settlement. The tool's own polling times nothing.
+- **Each stage:** the play's `stages.json`.
+- **Outside the stages:** claim to completion less the stages' sum. This narrows §7's "claim-to-completion and
+  delivery": no record times delivery apart, so what is read is the worker staging the tree, the result's
+  delivery and the runtime's acceptance, together.
+- **The median and the p95** of claim to completion (the p95 is the 19th of 20 by nearest rank), plays per hour
+  over the set's own span, and each stage's median.
+- **The pair** is read by `measured_play_set.py compare`. It is unmatched, and says why, when the two sets
+  differ in scenario, commit, staged revision or number of plays, when either names no single qualification
+  record or they name different ones, or when either stopped early or holds a play that didn't complete. It
+  names every play whose outcomes differ between the sets.
+
+**4. The host's bar, which makes two sets' readings comparable.** Read by `measured_play_set.py host-bar` from
+a `host_quiet_reading.py` document (schema `squadops.host-quiet-reading/1`). A reading that wasn't taken misses
+the bar. Docker answering that it isn't running meets "no container running". A Docker that didn't answer in
+time misses it, since a hung daemon can still have containers at work.
+- **At a set's start:** the 1-minute load under 2.0 and the 15-minute load under 3.0; free memory at 70% or
+  more; no container running; no model loaded; every process that isn't Studio, the worker, Docker or Ollama
+  together under 100% CPU.
+- **At a set's end:** no container running and no model loaded. A set of plays raises the load and Studio's
+  memory by itself, so those are recorded and not held to a bar.
+- **A set whose start reading misses the bar waits** until one meets it. It is not played and explained after.
+- **Two sets are comparable** when both start readings and both end readings meet their bars. All four are
+  shown side by side in the record.
+
+**5. When the before set is taken.** After this amendment is on main, with the worker's checkout on main at
+or after the merge of R5.32's Studio half (PR #3288), the Spark's deploy rebuilt from main so that each result
+names who served it, and the Spark's provider set to `runtime_api` for the set. The worker's commit, the
+deploy's record id and the four host readings are written into the set's record beside the tool's own.
+
+**The two sets differ by the throughput change and nothing else on the worker.** That is why the before set
+waits for #3288: it adds two console reads to every play, and a before set without them would credit their
+cost to the change. Any other change to the worker's play path that merges between the sets is named in the
+record with its measured cost, or the before set is taken again after it.
+
+**Not built, said deliberately:** a separate timing of delivery. **Still to come, by a later amendment:** each
+isolation test of case 12 with what it reads. They read the throughput change, which isn't designed until the
+before set is in.
