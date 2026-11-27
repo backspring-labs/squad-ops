@@ -370,6 +370,10 @@ async def test_a_campaign_refuses_a_candidate_that_breaks_an_earlier_scenario_an
     # The record proposes (5); increment one accepted proposes again (7); increment two rejected
     # is repaired (12); the repair accepted meets the objective (3).
     assert _rows(log) == ["row 5", "row 7", "row 12", "row 3"]
+    # R5.35 (#3236): an operation an agent's task asked for is owned by its cycle as the runtime
+    # holds it, and by that cycle's Campaign, which the task's own context never named.
+    asked_by_tasks = [o for o in machinery.operations() if o.request.task_id.startswith("task-")]
+    assert asked_by_tasks and {o.origin.get("campaign_id") for o in asked_by_tasks} == {CID}
 
     cycles = sorted(await machinery.registry.list_cycles(PROJECT), key=lambda c: c.created_at)
     assert [c.kind for c in cycles] == ["increment", "increment", "repair"]

@@ -1,0 +1,25 @@
+checks:
+  - id: "3236-agents-operation-owned-by-the-runtimes-cycle"
+    what: the agent's create route reads an operation's cycle from the runtime's record, refuses one it doesn't hold, and writes the cycle's own Campaign over the body's (SIP-0117 R5.35)
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      from types import SimpleNamespace
+      from fastapi import HTTPException
+      from squadops.api.routes.remote_operations import _owned_origin
+      from squadops.cycles.models import CycleNotFoundError
+      from squadops.remote_execution.workers import OperationOwner
+      class Cycles:
+          async def get_cycle(self, cycle_id):
+              if cycle_id != "cyc_1":
+                  raise CycleNotFoundError(cycle_id)
+              return SimpleNamespace(cycle_id=cycle_id, campaign_id="cmp_1")
+      request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(cycle_registry=Cycles())))
+      held = asyncio.run(_owned_origin(request, {"cycle_id": "cyc_1", "campaign_id": "cmp_forged"}, OperationOwner("cyc_1")))
+      try:
+          asyncio.run(_owned_origin(request, {"cycle_id": "cyc_gone"}, OperationOwner("cyc_gone")))
+          refused = "queued"
+      except HTTPException as e:
+          refused = e.detail["error"]["code"]
+      print(held["campaign_id"], refused)
+    expect: "cmp_1 REMOTE_OPERATION_OWNER_UNKNOWN"

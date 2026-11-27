@@ -90,6 +90,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   - The worker's refusal names the tools that differ: `(changed script_read)`, with added and removed beside it.
   - A pin written under `/2` still pins. Against it the comparison reads unavailable, and the record that
     replaces it holds `tools_changed: null`, never an empty list.
+- **An agent's remote operation is owned by the cycle the runtime holds, and by that cycle's Campaign** (#3236;
+  SIP-0117 R5.35): the agent's create route took the owning cycle on the body's word. It now reads the cycle,
+  refuses one the runtime doesn't hold (`REMOTE_OPERATION_OWNER_UNKNOWN`), and writes the cycle's own Campaign
+  onto the operation, so a Campaign's abort reaches it directly.
 - **Every view of a cycle reads the same status and names the same ending** (#3224, #3244; the 2.9 plan's
   item 3):
   - **The list's status filter reads what the cycle's own row reads** (#3224). It read the latest run alone,

@@ -1800,6 +1800,28 @@ while the operation was running | ran_with {} | evidence 0`.
 **Who ruled.** The owner adopted the 2.9 plan on 2026-11-26, whose item 2 splits #3236 by host. The Spark lane
 agreed the seam, and the MacBook lane built it.
 
+## R5.35 An agent's operation is owned by the cycle the runtime holds, and by that cycle's Campaign (#3236, 2026-11-26; R5.30)
+
+**What changed.** R5.30 has every operation name its owner, and has a task's handler name its cycle, "which is
+all its context holds". The agent's create route took that name on the body's word. Now it reads the cycle
+from the runtime's own record:
+
+| Point | As built | Why |
+|---|---|---|
+| **A cycle the runtime doesn't hold is refused** | 422 `REMOTE_OPERATION_OWNER_UNKNOWN`, naming the cycle id. Nothing is queued | No cycle's cancel and no Campaign's abort could reach an operation queued under it, so it would run until its requester's wait ran out: the gap R5.30 closed, by another door |
+| **The Campaign is the cycle's own** | `origin["campaign_id"]` is written from the cycle's record, over whatever the body said under that key, and removed for a cycle in no Campaign | R5.30 reached an agent's operation from a Campaign's abort only through the cycle's cancel. With the Campaign on the operation, the abort reaches it directly, as it reaches the runtime's own plays. And a body can't put an operation under a Campaign its cycle isn't in, where that Campaign's abort would stop another's work |
+| **The handler is unchanged** | It still names its cycle alone (`OperationOwner(context.cycle_id)`) | The route holds the record; the task's context doesn't |
+
+**The evidence.** Recorded on #3236 when R5.30 shipped (PR #3256), as the follow-up its review left: the route
+read the owner's shape and never whether the cycle existed.
+
+**The tests** (`tests/unit/api/test_remote_operation_routes.py`) enter at the agent's create: an unknown cycle
+refused with nothing for a worker to claim; the cycle's Campaign added, written over a forged one, and left
+out for a cycle in none; and a Campaign's `cancel_owned` reaching an operation an agent asked for.
+
+**Who ruled.** The Spark lane, under the owner's grant of 2026-11-26, as a completion of R5.30 inside the 2.9
+plan's item 2.
+
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
 
 **What prompted it.** SIP-0116, Agent Skillsets, was accepted on 2026-11-09. The owner split it from Capability-Backed

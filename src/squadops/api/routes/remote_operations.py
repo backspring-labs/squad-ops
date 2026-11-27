@@ -24,13 +24,16 @@ so a requester that lost the answer, or restarted, reads the one it has.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from fastapi import APIRouter, Depends, Request, Response
 
 from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
-from squadops.api.runtime.deps import get_reply_router, get_worker_registry
+from squadops.api.runtime.deps import get_cycle_registry, get_reply_router, get_worker_registry
 from squadops.api.worker_schemas import RemoteOperationCreate, RemoteOperationResponse
 from squadops.auth.models import Scope
+from squadops.cycles.models import CycleNotFoundError
 from squadops.execution.reply_router import ReplyRouter
 from squadops.remote_execution.models import RemoteOperationRequest
 from squadops.remote_execution.registry import WorkerRegistry, cadence
@@ -39,11 +42,13 @@ from squadops.remote_execution.wire import (
     ERROR_OPERATION_NOT_FOUND,
     ERROR_OWNER_CANCELLED,
     ERROR_OWNER_MISSING,
+    ERROR_OWNER_UNKNOWN,
     ERROR_SEND_NOT_CURRENT,
     request_from_wire,
     result_to_wire,
 )
 from squadops.remote_execution.workers import (
+    ORIGIN_CAMPAIGN,
     NoWorker,
     OperationOwner,
     OwnerCancelled,
@@ -80,6 +85,32 @@ def _reply_router(request: Request) -> ReplyRouter:
             503, "REPLY_ROUTER_UNAVAILABLE", "the runtime holds no task's current send"
         )
     return router
+
+
+async def _owned_origin(
+    request: Request, asked: Mapping[str, str], owner: OperationOwner
+) -> dict[str, str]:
+    """``asked`` with whose operation it is as the runtime's own record has it (R5.30).
+
+    A task's handler names its cycle, which is all its context holds. The cycle is read here:
+    one the runtime doesn't hold is refused, since no cancel could reach an operation queued
+    for it. Its Campaign is written from the cycle's record, over whatever the body said under
+    that key, so a Campaign's abort reaches the operation by the Campaign itself and never only
+    through the cycle's cancel."""
+    try:
+        cycle = await get_cycle_registry(request).get_cycle(owner.cycle_id)
+    except CycleNotFoundError:
+        raise http_error(
+            422,
+            ERROR_OWNER_UNKNOWN,
+            "origin names a cycle the runtime doesn't hold, so no cancel could reach an "
+            "operation queued for it; nothing was queued",
+            {"cycle_id": owner.cycle_id},
+        ) from None
+    origin = {key: value for key, value in asked.items() if key != ORIGIN_CAMPAIGN}
+    if cycle.campaign_id:
+        origin[ORIGIN_CAMPAIGN] = cycle.campaign_id
+    return origin
 
 
 def _require_current(request: Request, operation_request: RemoteOperationRequest) -> None:
@@ -153,7 +184,7 @@ async def create(
             {"blank": blank},
         )
     try:
-        OperationOwner.from_origin(body.origin)
+        owner = OperationOwner.from_origin(body.origin)
     except ValueError as e:
         raise http_error(
             422,
@@ -162,7 +193,7 @@ async def create(
             {"defect": str(e)},
         ) from None
     _require_current(request, operation_request)
-    origin = dict(body.origin)
+    origin = await _owned_origin(request, body.origin, owner)
     identity = getattr(request.state, "identity", None)
     if identity is not None:
         # The route's own word on who asked, over whatever the body said under that key.
