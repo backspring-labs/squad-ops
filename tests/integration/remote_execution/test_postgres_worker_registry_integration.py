@@ -17,9 +17,9 @@ from adapters.remote_execution.factory import create_worker_registry_store
 from squadops.remote_execution.registry import WorkerRegistry
 from tests.integration.conftest import integration_postgres_dsn
 from tests.unit.remote_execution.registry_contract import (
-    as_served,
     Clock,
     WorkerRegistryContract,
+    as_served,
     passing,
     queue,
     registration,
