@@ -6,6 +6,19 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ## [Unreleased]
 
 ### Changed
+- **The three dependency moves capped on 2026-11-15 are taken** (#3101, the 2.9 plan's item 14): FastAPI 0.135 to
+  0.165 with Starlette 1.6 to 1.10, aio-pika 10.0 to 10.2 with aiormq 7.0 to 7.2, and ruff 0.16.6 to 0.17.5.
+  httpx moves to 0.29 and uvicorn to 0.54 with them. The locks were resolved by the `deps refresh` workflow.
+  - **Routes:** from FastAPI 0.136 an included router is one entry in `app.routes`. No runtime code walked the
+    table: the access log's quieted routes are a declared set. The three tests that walked it now read through
+    FastAPI's own `iter_route_contexts` (`tests/unit/api/served_routes.py`).
+  - **The publisher:** on a live broker, aio-pika 10.2's returned publish names `NO_ROUTE` and its routing key as
+    before, and the adapter retries it and raises `QueueError`. The failing test had built the error without its
+    frame, which aiormq 7.2 reads to describe it. The adapter now names any failure whose own text can't be
+    built by its type and arguments, so such an error can't replace the publish's failure.
+  - **The evaluator image is cut as `…ruff0.17-eslint10.12-9`.** Lighthouse, axe, ESLint, the driver and the
+    Chromium pin are -8's. A lint reading on -8 or earlier stays its own series.
+  - ruff 0.17.5 reformats no file in the repository.
 - **A new loaded check goes in a file of its own** (#3268): `scripts/dev/loaded_checks.d/<issue>.yaml`, read
   with `loaded_checks.yaml` as one set by `verify_loaded.py`, the verification-set driver and the test that
   runs each row on the source (`scripts/dev/loaded_check_rows.py`). While every row was appended to the one
