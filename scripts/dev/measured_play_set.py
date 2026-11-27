@@ -49,7 +49,9 @@ import math
 import statistics
 import sys
 import uuid
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -107,6 +109,8 @@ def play_record(index: int, operation: QueuedOperation, attempt: Attempt | None)
         "source_revision": operation.request.source_revision,
         "served_by": ran_with.get("served_by"),
         "qualified_by": ran_with.get("qualified_by"),
+        "place_baseline": ran_with.get("place_baseline"),
+        "ran_source_revision": ran_with.get("source_revision"),
         "played": {
             key.removeprefix("played."): value
             for key, value in sorted(ran_with.items())
@@ -482,8 +486,26 @@ def staged_text(files: Mapping[str, bytes]) -> tuple[dict[str, str], list[str]]:
 # --------------------------------------------------------------------------------- composition
 
 
-async def _play(args: argparse.Namespace) -> int:
-    """The runtime's own ports, built from the container's config as the runtime builds them."""
+@dataclass(frozen=True)
+class RuntimePorts:
+    """What a set or a sequence needs of the runtime: its worker registry and that registry's
+    store, the pinned commit's staged text, and the provider's own names and vocabulary."""
+
+    registry: Any
+    store: Any
+    commit: str
+    staged: dict[str, str]
+    not_staged: list[str]
+    provider: str
+    operation: str
+    vocabulary: Any
+
+
+@asynccontextmanager
+async def runtime_ports(project_id: str, commit: str) -> AsyncIterator[RuntimePorts]:
+    """The runtime's own ports, built from the container's config as the runtime builds them.
+    Raises ``RuntimeError`` when this runtime's registry isn't in Postgres: no worker would see
+    what was queued."""
     from adapters.cycles.factory import create_project_registry
     from adapters.persistence.pool import create_pool
     from adapters.remote_execution.factory import create_worker_registry_store
@@ -495,22 +517,10 @@ async def _play(args: argparse.Namespace) -> int:
     from squadops.projects.configuration import baseline_tree
     from squadops.projects.registration import LocatorPolicy
     from squadops.remote_execution.registry import WorkerRegistry
-    from squadops.remote_execution.scenario import frozen_scenario
 
-    scenario_file = Path(args.scenario)
-    scenario = frozen_scenario(json.loads(scenario_file.read_text(encoding="utf-8")), VOCABULARY)
-    if scenario.digest != args.scenario_digest:
-        print(
-            f"the scenario at {scenario_file} freezes to {scenario.digest}, and the registered "
-            f"one is {args.scenario_digest}: nothing was played",
-            file=sys.stderr,
-        )
-        return 2
     config = load_config(secret_provider_factory=secret_provider_for)
     if config.cycles.registry_provider != "postgres":
-        print("this runtime's registry isn't in Postgres, so no worker would see the set",
-              file=sys.stderr)  # fmt: skip
-        return 2
+        raise RuntimeError("this runtime's registry isn't in Postgres, so no worker would see it")
     pool = await create_pool(config.database().url, min_size=1, max_size=2)
     try:
         provider = config.cycles.project_registry_provider
@@ -526,49 +536,74 @@ async def _play(args: argparse.Namespace) -> int:
             committer_name=config.projects.committer_name,
             committer_email=config.projects.committer_email,
         )
-        project = await projects.get_project(args.project)
+        project = await projects.get_project(project_id)
         checkout = await baseline_tree(
-            repository, args.project, project.source.repo_uri, project.source.base_ref, args.commit
+            repository, project_id, project.source.repo_uri, project.source.base_ref, commit
         )
         staged, not_staged = staged_text(checkout.files)
         store = create_worker_registry_store("postgres", pool=pool)
-        registry = WorkerRegistry(store)
-        if args.dry_run:
-            # Everything the set needs, read and said, and nothing queued.
-            no_worker = await registry.no_worker_for(PROVIDER, OPERATION)
-            print(
-                json.dumps(
-                    {
-                        "dry_run": True,
-                        "scenario": {"name": scenario_file.name, "digest": scenario.digest},
-                        "commit": checkout.commit,
-                        "files_staged": len(staged),
-                        "files_not_staged": len(not_staged),
-                        "worker": "serving" if no_worker is None else no_worker.reason,
-                    },
-                    indent=2,
-                )
-            )
-            return 0 if no_worker is None else 1
-        run = uuid.uuid4().hex[:8]
-        requests = set_requests(
-            args.label, run, args.plays,
-            source_files=staged, scenario=scenario, provider=PROVIDER, operation=OPERATION,
+        yield RuntimePorts(
+            WorkerRegistry(store), store, checkout.commit, staged, not_staged,
+            PROVIDER, OPERATION, VOCABULARY,
         )  # fmt: skip
-        plays, stopped = await run_set(
-            registry,
-            store,
-            requests,
-            {"cycle_id": f"{OWNER_PREFIX}{args.label}:{run}", "requester": "measured_play_set"},
-            play_timeout_seconds=args.play_timeout_seconds,
-            gap_seconds=args.gap_seconds,
-        )
     finally:
         await pool.close()
+
+
+async def _play(args: argparse.Namespace) -> int:
+    from adapters.remote_execution.game_dev_roblox_studio.vocabulary import VOCABULARY
+    from squadops.remote_execution.scenario import frozen_scenario
+
+    scenario_file = Path(args.scenario)
+    scenario = frozen_scenario(json.loads(scenario_file.read_text(encoding="utf-8")), VOCABULARY)
+    if scenario.digest != args.scenario_digest:
+        print(
+            f"the scenario at {scenario_file} freezes to {scenario.digest}, and the registered "
+            f"one is {args.scenario_digest}: nothing was played",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        async with runtime_ports(args.project, args.commit) as ports:
+            if args.dry_run:
+                # Everything the set needs, read and said, and nothing queued.
+                no_worker = await ports.registry.no_worker_for(ports.provider, ports.operation)
+                print(
+                    json.dumps(
+                        {
+                            "dry_run": True,
+                            "scenario": {"name": scenario_file.name, "digest": scenario.digest},
+                            "commit": ports.commit,
+                            "files_staged": len(ports.staged),
+                            "files_not_staged": len(ports.not_staged),
+                            "worker": "serving" if no_worker is None else no_worker.reason,
+                        },
+                        indent=2,
+                    )
+                )
+                return 0 if no_worker is None else 1
+            run = uuid.uuid4().hex[:8]
+            requests = set_requests(
+                args.label, run, args.plays,
+                source_files=ports.staged, scenario=scenario,
+                provider=ports.provider, operation=ports.operation,
+            )  # fmt: skip
+            plays, stopped = await run_set(
+                ports.registry,
+                ports.store,
+                requests,
+                {"cycle_id": f"{OWNER_PREFIX}{args.label}:{run}", "requester": "measured_play_set"},
+                play_timeout_seconds=args.play_timeout_seconds,
+                gap_seconds=args.gap_seconds,
+            )
+            commit, not_staged = ports.commit, ports.not_staged
+    except RuntimeError as e:
+        print(f"{e}: nothing was played", file=sys.stderr)
+        return 2
     document = set_document(
         args.label,
         project=args.project,
-        commit=checkout.commit,
+        commit=commit,
         scenario_name=scenario_file.name,
         scenario_digest=scenario.digest,
         asked=args.plays,
