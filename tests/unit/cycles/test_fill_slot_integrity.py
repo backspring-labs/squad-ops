@@ -397,11 +397,13 @@ class TestRouterPrefixRestorationKeepsTheRegisteredRoutes:
         """What FastAPI registers when the file is imported — the boot itself."""
         from fastapi import FastAPI
 
+        from tests.unit.api.served_routes import served
+
         namespace: dict = dict(stubs or {})
         exec(compile(source, "<routes>", "exec"), namespace)  # noqa: S102
         app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
         app.include_router(namespace["router"])
-        return {r.path for r in app.routes if getattr(r, "methods", None)}
+        return {r.path for r in served(app) if r.methods}
 
     def test_the_prefixed_paths_are_re_homed_and_the_file_boots_with_the_same_routes(self):
         corrected, divergences = restore_declared_status_codes(self.SEED, self.EMITTED)

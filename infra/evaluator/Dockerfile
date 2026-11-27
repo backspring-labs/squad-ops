@@ -11,7 +11,7 @@
 # #1937's tools at #1937's versions, so the two readings are one measure: ruff from its own image,
 # pinned by digest to the version requirements/agent.lock pins, and ESLint's packages in the lock
 # beside Lighthouse's (test_evaluator_image.py keeps both equal to the qa image's).
-FROM ghcr.io/astral-sh/ruff:0.16.6@sha256:77e0110c04fdfdd7c97657a680aad0faa7c7d2161556d698695e87d608071ac2 AS ruff
+FROM ghcr.io/astral-sh/ruff:0.17.5@sha256:3abcaeec575bf06baac8e28f2462e75d7093a7740ecf61c5f833b0a827abac10 AS ruff
 
 FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
 
