@@ -106,9 +106,20 @@ class ScriptedRunner(OperationRunnerPort):
         self.busy_probe_seconds: float = 0
         self.probes_while_running = 0
         self._running = False
+        #: What each run establishes as it begins, as a tool reads its facts (#3236), and what
+        #: ``running_with`` answers.
+        self.establishes: dict[str, str] = {}
+        self.established: dict[str, str] = {}
+        #: Raised by ``running_with`` instead, when set.
+        self.running_with_raises: Exception | None = None
 
     def serves(self):
         return self._served
+
+    def running_with(self):
+        if self.running_with_raises is not None:
+            raise self.running_with_raises
+        return dict(self.established)
 
     async def tool_versions(self):
         return {"scripted-editor": "7.2"}
@@ -124,9 +135,13 @@ class ScriptedRunner(OperationRunnerPort):
         if self.reset_raises is not None:
             raise self.reset_raises
         self.resets += 1
+        # As a real tool's reset ends its run: what it had established is gone, so a worker
+        # that read it after the reset would read nothing (#3236).
+        self.established = {}
 
     async def run(self, request):
         self.runs.append(request)
+        self.established = dict(self.establishes)
         if self.raises is not None:
             raise self.raises
         started = self._clock()
