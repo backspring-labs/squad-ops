@@ -80,10 +80,6 @@ RUNTIME_ONLY: dict[str, str] = {
         "A command the qa image runs over the delivered app's Python for the reporting-only "
         "lint reading (#1937, squadops.capabilities.delivered_lint); never imported."
     ),
-    "aiormq": (
-        "aio-pika's own transport, declared only to cap the version aio-pika resolves: 7.2 moved "
-        "with aio-pika 10.2's changed returned publish (#3101). The cap goes with it."
-    ),
 }
 
 #: Imports of modules that exist nowhere — a defect on record, keyed to its issue. The
