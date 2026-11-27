@@ -825,20 +825,28 @@ it before it was registered. Where the Spark lane departed from the review, it s
    conditions are read only when Studio is behind, so a locked screen or a person at the keyboard didn't stop a play
    with Studio already in front, and that nothing is read during a play. R5.37 moves the checks from the activation
    to the input. Its tests are at the runner and through `Worker.serve()`. The window and rehearsal 2 run on a
-   worker checkout that carries it, and every result names that checkout's commit (`source_revision`).
+   worker checkout that carries it. No result's `ran_with` names the worker's commit (its `source_revision` is the
+   candidate tree's), so the record names the checkout's commit for every play, from the MacBook lane's run log,
+   and every result's `harness.*` digests must match that checkout's.
 3. **Two new owner-present variants,** in the same sitting as cases 3 and 4, each one queued play, as 13e's point 3:
-   - **Case 3b, input during a play.** Studio is in front and the Mac idle. The MacBook lane tells the owner when
-     the play's first input action has been sent, and the owner then moves the pointer or types. *Passes when* no
+   - **Case 3b, input during a play.** The guard reads the counter before each input action after the first, and
+     as soon as a held key ends, so the play needs a second input. The scenario is the qualification scenario with
+     one 10 s `hold_key` added after its setup, kept beside it on the Mac and frozen by digest before the sitting.
+     The MacBook lane measured the idle counter on that shape (R5.37's as-built table). Studio is in front and the
+     Mac idle. The MacBook lane tells the owner when the hold has begun, and the owner then moves the pointer. *Passes when* no
      input action is sent after the owner's input is read, the result reads `not_executed`, `tool_unready` and
      `front.refused` `input_during_play`, and no assertion reads as failed. If R5.37's measurement shows the idle
      counter can't tell the play's own input from a person's, case 3b is not run, and the record says that input
      during a play is not detected.
-   - **Case 4b, a lock with Studio already in front.** Studio is in front when the owner locks the screen. *Passes
-     when* nothing is sent, the result reads `not_executed`, `tool_unready` and `front.refused` `locked`, and the
+   - **Case 4b, a lock with Studio already in front.** Studio is in front when the owner locks the screen and steps
+     away. The play is queued only once the MacBook lane reads the screen locked and the idle counter past the
+     threshold, since a dedicated worker reads the counter before the lock and a counter under the threshold would
+     refuse first, as `idle_below_threshold`, without testing the lock. *Passes when* nothing is sent, the result reads `not_executed`, `tool_unready` and `front.refused` `locked`, and the
      screen is still locked when the owner returns. This is the path the review found unguarded. Case 4 keeps its own
      variant, with another app in front.
 
-   §7's cases 3 and 4 otherwise stand.
+   §7's case 4 is queued the same way, after the lock and the counter both read, for the same reason. Its other lines,
+   and case 3's, stand.
 4. **Cases 3, 4, 3b and 4b prove the worker's refusal, not a Campaign's retry.** Their plays are queued alone, so
    no increment waits on them. The record cites the wiring tests that hold `tool_unready` to rows 10 and 11's retry,
    never a repair, by name, and doesn't present the single plays as evidence of it.
