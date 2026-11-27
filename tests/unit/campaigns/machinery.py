@@ -607,6 +607,9 @@ async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Mac
     )
     # The requester's routes read the executor's own router for the send that is current (R5.6).
     path.world.app.state.reply_router = executor._reply_router
+    # And the runtime's own cycle registry, for whose operation it is (R5.35, #3236): the
+    # Campaign's cycles are the ones the route holds.
+    path.world.app.state.cycle_registry = registry
     await _squad(monkeypatch, broker, path)
     authority = _Allows()
     if campaign:
