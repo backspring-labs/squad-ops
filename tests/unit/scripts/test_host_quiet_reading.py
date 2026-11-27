@@ -152,3 +152,20 @@ def test_a_docker_that_hangs_is_read_as_not_answering_and_the_document_is_still_
 def test_a_vm_stat_missing_a_kind_of_page_is_unread_never_zero(text, why):
     with pytest.raises(ValueError, match=why):
         quiet.memory(text)
+
+
+@pytest.mark.parametrize(
+    ("executable", "args", "counted"),
+    [
+        # As ps names the worker on the Mac (2026-11-27): the venv's python as it was invoked.
+        (".venv/bin/python", ".venv/bin/python -m squadops.remote_execution.worker_main", "worker"),
+        # A framework Python, whose executable is capitalised.
+        ("/Library/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python",
+         "Python -m squadops.remote_execution.worker_main", "worker"),
+        # Studio's crash handler, its second process, sits beside it in the bundle.
+        ("/Applications/RobloxStudio.app/Contents/MacOS/RobloxCrashHandler", "RobloxCrashHandler", "studio"),
+    ],
+    ids=["the-venv-python", "a-framework-python", "studios-crash-handler"],
+)  # fmt: skip
+def test_the_worker_and_studio_are_read_as_ps_names_them_on_the_mac(executable, args, counted):
+    assert quiet.kind(executable, args) == counted

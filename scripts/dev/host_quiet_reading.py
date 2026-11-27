@@ -105,7 +105,8 @@ def kind(executable: str, args: str) -> str:
     name = executable.rsplit("/", 1)[-1]
     if "RobloxStudio.app/Contents/MacOS/" in executable:
         return "studio"
-    if name.startswith("python") and WORKER_ARGUMENTS in args:
+    # Without case: a framework Python on macOS runs as ``Python.app/Contents/MacOS/Python``.
+    if name.lower().startswith("python") and WORKER_ARGUMENTS in args:
         return "worker"
     if "Docker.app/" in executable or name.startswith("com.docker."):
         return "docker"
