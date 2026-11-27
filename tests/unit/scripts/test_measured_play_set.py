@@ -403,11 +403,19 @@ def test_a_reading_that_misses_the_start_bar_says_how(change, miss):
     assert len(misses) == 1 and misses[0].startswith(miss), misses
 
 
-def test_docker_not_answering_is_no_container_and_docker_unread_is_a_miss():
-    stopped = {**QUIET, "docker": {"answers": False, "why": "docker exited 1"}}
+def test_docker_saying_it_isnt_running_is_no_container_and_a_docker_that_hung_is_a_miss():
+    """Bug caught: a hung daemon, which can still have containers at work, read as none. The
+    reading script answers a hang as ``answers: false`` too, with why it didn't answer."""
+    stopped = {**QUIET, "docker": {"answers": False, "why": "OSError: docker exited 1: daemon"}}
+    hung = {
+        **QUIET,
+        "docker": {"answers": False, "why": "TimeoutExpired: Command '['docker', 'ps'..."},
+    }
     unread = {key: value for key, value in QUIET.items() if key != "docker"}
+    told = ["docker didn't answer in time, so its containers weren't read"]
 
     assert measured.host_bar(stopped, "start") == []
+    assert (measured.host_bar(hung, "start"), measured.host_bar(hung, "end")) == (told, told)
     assert measured.host_bar(unread, "start") == ["docker wasn't read"]
 
 

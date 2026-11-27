@@ -306,9 +306,13 @@ def host_bar(reading: Mapping[str, Any], when: str) -> list[str]:
 
 
 def _containers(reading: Mapping[str, Any]) -> list[str]:
+    """No container is running: Docker says so, or Docker says it isn't running. A Docker that
+    didn't answer in time is neither: a hung daemon can still have containers at work."""
     docker = reading.get("docker")
     if not isinstance(docker, Mapping) or "answers" not in docker:
         return ["docker wasn't read"]
+    if not docker["answers"] and str(docker.get("why", "")).startswith("TimeoutExpired"):
+        return ["docker didn't answer in time, so its containers weren't read"]
     if docker["answers"] and docker.get("containers_running") != 0:
         return [f"{docker.get('containers_running')} containers are running"]
     return []

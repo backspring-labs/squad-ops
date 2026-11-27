@@ -511,7 +511,8 @@ container:
 
 **4. The host's bar, which makes two sets' readings comparable.** Read by `measured_play_set.py host-bar` from
 a `host_quiet_reading.py` document (schema `squadops.host-quiet-reading/1`). A reading that wasn't taken misses
-the bar.
+the bar. Docker answering that it isn't running meets "no container running". A Docker that didn't answer in
+time misses it, since a hung daemon can still have containers at work.
 - **At a set's start:** the 1-minute load under 2.0 and the 15-minute load under 3.0; free memory at 70% or
   more; no container running; no model loaded; every process that isn't Studio, the worker, Docker or Ollama
   together under 100% CPU.
