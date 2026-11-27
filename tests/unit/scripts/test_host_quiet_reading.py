@@ -32,13 +32,28 @@ Pages speculative:                         1210.
 Pages wired down:                        187717.
 Pages occupied by compressor:            367186.
 """
+#: `ps -Ao pid=,pcpu=,rss=,comm=`: each process's executable.
 PS = """\
-  101   12.5  204800 /Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio -task EditFile
-  102    1.0   51200 /Users/me/Code/squad-ops/.venv/bin/python -m squadops.remote_execution.worker_main
+  101   12.5  204800 /Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio
+  102    1.0   51200 /Users/me/Code/squad-ops/.venv/bin/python3.12
   103    3.0  102400 /Applications/Docker.app/Contents/MacOS/com.docker.backend
-  104    0.5   10240 /opt/homebrew/bin/ollama serve
-  105   40.0  409600 /Applications/Secret Diary.app/Contents/MacOS/Secret Diary --open my-notes.txt
+  104    0.5   10240 /opt/homebrew/bin/ollama
+  105   40.0  409600 /Applications/Secret Diary.app/Contents/MacOS/Secret Diary
   106    2.0   20480 /usr/libexec/somedaemon
+  107    0.3    4096 /bin/zsh
+  108    0.2    4096 /bin/zsh
+"""
+#: `ps -Ao pid=,args=`: each process's arguments. 107 and 108 are shells whose own commands only
+#: name the worker's module and Studio (#3292): neither is the worker or Studio.
+PS_ARGS = """\
+  101 /Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio -task EditFile
+  102 /Users/me/Code/squad-ops/.venv/bin/python3.12 -m squadops.remote_execution.worker_main
+  103 /Applications/Docker.app/Contents/MacOS/com.docker.backend
+  104 /opt/homebrew/bin/ollama serve
+  105 /Applications/Secret Diary.app/Contents/MacOS/Secret Diary --open my-notes.txt
+  106 /usr/libexec/somedaemon
+  107 /bin/zsh -c set -a; . worker.env; exec .venv/bin/python -m squadops.remote_execution.worker_main
+  108 /bin/zsh -c open -a /Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio
 """
 OUTPUTS = {
     "sysctl": "{ 2.46 4.68 4.83 }\n",
@@ -54,6 +69,8 @@ def _run(failing: set[str] = frozenset()):
     def run(command: list[str]) -> str:
         if command[0] in failing:
             raise OSError(f"{command[0]} isn't there")
+        if command[:3] == ["ps", "-Ao", "pid=,args="]:
+            return PS_ARGS
         return OUTPUTS[command[0]]
 
     return run
@@ -80,7 +97,8 @@ def test_each_reading_is_taken_and_only_our_processes_are_named():
         "worker": {"count": 1, "cpu_percent": 1.0, "rss_mb": 50.0},
         "docker": {"count": 1, "cpu_percent": 3.0, "rss_mb": 100.0},
         "ollama": {"count": 1, "cpu_percent": 0.5, "rss_mb": 10.0},
-        "other": {"count": 2, "cpu_percent": 42.0, "rss_mb": 420.0},
+        # The two shells that only name the worker and Studio are "other" (#3292).
+        "other": {"count": 4, "cpu_percent": 42.5, "rss_mb": 428.0},
     }
     whole = json.dumps(document)
     assert "Secret Diary" not in whole and "my-notes" not in whole and "somedaemon" not in whole
