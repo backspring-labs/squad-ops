@@ -34,15 +34,13 @@ from squadops.api.cycle_schemas import (
 )
 from squadops.api.runtime.agent_labels import get_role_label
 from squadops.cycles.cycle_end import RecordedEnd
-from squadops.cycles.lifecycle import CycleReading, read_cycle_status
+from squadops.cycles.lifecycle import CycleReading, cycle_reading, workload_progress
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
     CycleStatus,
-    GateDecisionValue,
     Project,
     Run,
-    RunStatus,
     SquadProfile,
 )
 from squadops.cycles.verification_integrity import CycleOutcome
@@ -145,79 +143,27 @@ def _policy_to_dto(policy) -> TaskFlowPolicyDTO:
     )
 
 
-_RUN_STATUS_TO_PROGRESS: dict[str, str] = {
-    RunStatus.QUEUED.value: "pending",
-    RunStatus.RUNNING.value: "running",
-    RunStatus.PAUSED.value: "gate_awaiting",
-    RunStatus.COMPLETED.value: "completed",
-    RunStatus.FAILED.value: "failed",
-}
-
-
 def compute_workload_progress(
     workload_sequence: list[dict],
     runs: list[Run],
 ) -> list[WorkloadProgressEntry]:
-    """Derive workload_progress by positional alignment (SIP-0083 §5.8).
-
-    Non-cancelled runs are sorted by run_number and aligned to
-    workload_sequence entries positionally.  Domain run statuses are
-    mapped to the DTO vocabulary; raw status values are never passed
-    through.
-    """
-    non_cancelled = sorted(
-        [r for r in runs if r.status != RunStatus.CANCELLED.value],
-        key=lambda r: r.run_number,
-    )
-    entries = []
-    for i, ws_entry in enumerate(workload_sequence):
-        if i < len(non_cancelled):
-            run = non_cancelled[i]
-            gate_name = ws_entry.get("gate")
-            rejected = gate_name and any(
-                gd.decision == GateDecisionValue.REJECTED
-                for gd in run.gate_decisions
-                if gd.gate_name == gate_name
-            )
-            if rejected:
-                status = "rejected"
-            else:
-                status = _RUN_STATUS_TO_PROGRESS.get(run.status, run.status)
-            entries.append(
-                WorkloadProgressEntry(
-                    index=i,
-                    workload_type=ws_entry.get("type", "unknown"),
-                    run_id=run.run_id,
-                    status=status,
-                )
-            )
-        else:
-            entries.append(
-                WorkloadProgressEntry(
-                    index=i,
-                    workload_type=ws_entry.get("type", "unknown"),
-                    run_id=None,
-                    status="pending",
-                )
-            )
-    return entries
+    """The cycle's workload progress as the response carries it. The alignment and the status
+    vocabulary are the domain's (``lifecycle.workload_progress``), which the cycle's reading and
+    the list's status filter read too (#3224)."""
+    return [
+        WorkloadProgressEntry(
+            index=e.index, workload_type=e.workload_type, run_id=e.run_id, status=e.status
+        )
+        for e in workload_progress(workload_sequence, runs)
+    ]
 
 
 def cycle_reading_of(cycle: Cycle, runs: list[Run], end: RecordedEnd | None) -> CycleReading:
-    """The cycle's status as the cycle route reads it: its recorded ending first, then its runs
-    and its workload progress (SIP-0083 D5). One reading for every caller that asks whether a
-    cycle has ended:
-    - a campaign's abort read only the latest run (``derive_cycle_status``), so a cycle waiting
-      between workloads read ``completed`` there and ``active`` here, and the abort left it
-      running (#2214);
-    - a cycle a campaign ended at the gate kept pending workloads, so it read ``active`` until an
-      abort cancelled it 40 minutes after it ended (#3201). Its ``cycle_ends`` row now decides.
-
-    ``end`` is required, never defaulted: a caller that skips the end record reads #3201 again."""
-    ws = cycle.resolved_config().get("workload_sequence", [])
-    progress = compute_workload_progress(ws, runs)
-    workload_statuses = [e.status for e in progress] if progress else None
-    return read_cycle_status(runs, cycle.cancelled, workload_statuses, end)
+    """The cycle's status as the cycle route reads it, which is the domain's one reading
+    (``lifecycle.cycle_reading``): the list's status filter in each registry reads the same one
+    (#3224). ``end`` is required, never defaulted: a caller that skips the end record reads #3201
+    again."""
+    return cycle_reading(cycle, runs, end)
 
 
 def cycle_status_of(cycle: Cycle, runs: list[Run], end: RecordedEnd | None) -> CycleStatus:
