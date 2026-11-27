@@ -19,6 +19,9 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 from squadops.bootstrap.database_isolation import (
     DEPLOYMENT_DB_NAME,
@@ -1118,9 +1121,123 @@ def _collect_squad_checks(profile: BootstrapProfile) -> list[CheckResult]:
     return results
 
 
+#: Where Docker reads the GPU's CDI spec, and the drop-in that regenerates it at the daemon's
+#: start (#3251). The bootstrap installs the drop-in from ``GPU_CDI_DROPIN_SOURCE``.
+GPU_CDI_SPEC = Path("/etc/cdi/nvidia.yaml")
+GPU_CDI_DROPIN = Path("/etc/systemd/system/docker.service.d/10-nvidia-cdi.conf")
+GPU_CDI_DROPIN_SOURCE = REPO / "scripts" / "bootstrap" / "host" / "docker-nvidia-cdi.conf"
+_GPU_CDI_FIX = (
+    "./scripts/bootstrap/bootstrap.sh local-spark  (rewrites the spec, installs the drop-in)"
+)
+
+
+def check_gpu_cdi(
+    spec: Path = GPU_CDI_SPEC,
+    dropin: Path = GPU_CDI_DROPIN,
+    shipped: Path = GPU_CDI_DROPIN_SOURCE,
+) -> list[CheckResult]:
+    """A box that hands containers its GPU by CDI (#3251): every device node its spec names
+    exists, and the spec is regenerated whenever Docker starts.
+
+    The spec names the GPU's ``/dev/dri`` card by number, which a boot can change. A spec naming
+    a node that isn't there fails every container that takes the GPU, while the daemon starts,
+    and Docker doesn't retry such a start. Nothing is checked on a box with no spec: it doesn't
+    hand out its GPU this way."""
+    if not spec.exists():
+        return []
+    results = []
+    try:
+        named = _cdi_device_nodes(yaml.safe_load(spec.read_text()))
+    except (OSError, yaml.YAMLError, ValueError) as e:
+        results.append(
+            CheckResult(
+                name="gpu:cdi-device-nodes",
+                category="gpu",
+                passed=False,
+                message=f"{spec} can't be read as a CDI spec",
+                detail=f"{type(e).__name__}: {e}",
+                fix_command=_GPU_CDI_FIX,
+            )
+        )
+    else:
+        missing = sorted(node for node in named if not Path(node).exists())
+        results.append(
+            CheckResult(
+                name="gpu:cdi-device-nodes",
+                category="gpu",
+                passed=not missing,
+                message=(
+                    f"every device node {spec} names exists ({len(named)})"
+                    if not missing
+                    else f"{spec} names device nodes that don't exist: {', '.join(missing)}"
+                ),
+                detail=(
+                    None
+                    if not missing
+                    else "containers that take the GPU fail to start until the spec is "
+                    "regenerated: sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml"
+                ),
+                fix_command=None if not missing else _GPU_CDI_FIX,
+            )
+        )
+    # Held to its directives, not its comments: a copy installed before a comment was reworded
+    # does the same thing, and needs no sudo to say so.
+    installed = dropin.read_text() if dropin.is_file() else None
+    current = (
+        installed is not None
+        and shipped.is_file()
+        and _unit_directives(installed) == _unit_directives(shipped.read_text())
+    )
+    results.append(
+        CheckResult(
+            name="gpu:cdi-refresh-at-docker-start",
+            category="gpu",
+            passed=current,
+            message=(
+                "the CDI spec is regenerated whenever Docker starts"
+                if current
+                else f"{dropin} is not installed, so a boot that renumbers the GPU's card "
+                "leaves its containers down"
+                if installed is None
+                else f"{dropin} differs from the one this checkout ships"
+            ),
+            fix_command=None if current else _GPU_CDI_FIX,
+        )
+    )
+    return results
+
+
+def _unit_directives(text: str) -> list[str]:
+    """A systemd unit file's lines that do something: every one that isn't blank or a comment."""
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith(("#", ";"))
+    ]
+
+
+def _cdi_device_nodes(document: Any) -> set[str]:
+    """Every host device node a CDI spec names: each ``deviceNodes`` entry's ``hostPath``, or
+    its ``path`` when it gives no other, at the top level and under each device."""
+    if not isinstance(document, dict) or not isinstance(document.get("devices"), list):
+        raise ValueError("a CDI spec is an object with a `devices` list")
+    edits = [
+        document.get("containerEdits"),
+        *(d.get("containerEdits") for d in document["devices"]),
+    ]
+    nodes = set()
+    for edit in edits:
+        for node in (edit or {}).get("deviceNodes") or []:
+            path = node.get("hostPath") or node.get("path")
+            if not isinstance(path, str) or not path:
+                raise ValueError(f"a device node names no path: {node!r}")
+            nodes.add(path)
+    return nodes
+
+
 def _collect_gpu_checks(profile: BootstrapProfile) -> list[CheckResult]:
     has_nvidia = any("nvidia" in dep.name for dep in profile.system_deps)
-    return list(check_nvidia_gpu()) if has_nvidia else []
+    return [*check_nvidia_gpu(), *check_gpu_cdi()] if has_nvidia else []
 
 
 #: systemd's own unit-state word, named rather than compared as a literal: "active" also

@@ -153,6 +153,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     that a run reaches, end the run `infrastructure_failed` with the same classifications. They ended it `other`.
   - A guard, `tests/unit/architecture/test_executor_vault_reads_are_declared.py`, refuses a bare
     `vault.retrieve` or a `retrieve_or_absent` in `squadops.execution`.
+- **The Spark's GPU containers come back after a reboot that renumbers the GPU's card** (#3251): the
+  `local-spark` bootstrap wrote the CDI spec once, and the spec names the GPU's `/dev/dri` card by number. On
+  2026-11-23 the GPU came up under another number, and the squad's LLM server and the GPU exporter stayed down.
+  - The bootstrap now installs a `docker.service` drop-in that regenerates the spec whenever Docker starts
+    (`scripts/bootstrap/host/docker-nvidia-cdi.conf`). A failure keeps the old spec and never blocks Docker.
+  - `squadops doctor` checks that every device node the spec names exists, and that the drop-in is installed.
 - **A gate that can't read its recorded input ends the cycle as the environment's** (#3128; SIP-0109 §24ei;
   the 2.9 plan's item 4): five reads at the gate between workloads read an artifact the vault couldn't return as
   one that wasn't there. The gate then found "no plan" or "no manifest", rejected the plan, and the squad re-rolled
