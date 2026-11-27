@@ -202,7 +202,7 @@ phases are in its own ledger.
 | A qualification names each tool whose definition changed: each tool's own digest in the record (schema `/3`), `tools_changed` beside the added and removed, the worker's refusal naming the tools that differ, and a comparison against an earlier record read as unavailable, never as no change (R5.31) | **shipped** | 2.9 (PR #3262, closing #3230) |
 | A result the worker builds itself names what its run had established: the cancel's and a raise's `interrupted` carry the runner's `running_with()`, read before the reset (R5.34) | **shipped** | 2.9 (PR #3277; #3236 tracks the live cancel round on real Studio) |
 | A play reads the place's non-script state twice, at its pin check and after play, the second held to the first; a place without a synced root its scripts go into is refused by name (R5.36) | **shipped** | 2.9 (PR #3290) |
-| The checks that guard a person hold for every input play: R5.33's conditions read whether or not Studio is in front, the lock and session on any worker, the front read once, the activation by the proved process's id, the lease and window read again before the first input, the lock and counter during the play, the session entry by entry, `front.input` on every input play (R5.37) | **shipped** | 2.9 (PR #PRNUM, closing #3300) |
+| The checks that guard a person hold for every input play: R5.33's conditions read whether or not Studio is in front, the lock and session on any worker, the front read once, the activation by the proved process's id, the lease and window read again before the first input, the lock and counter during the play, the session entry by entry, `front.input` on every input play (R5.37) | **shipped** | 2.9 (PR #3302, closing #3300) |
 | A candidate's own setup failure, the core: a play's result names the script errors its provider read, the registry writes who served it, and six conditions read from the cycle's records attribute a setup failure to the candidate, which then gets one correction in the run; the reading is kept either way, and anything else keeps its routing, not executed (R5.32) | **shipped** | 2.9 (PR #3275) |
 | A candidate's own setup failure, on Studio: the provider reads its console for script errors and names its environment (the MacBook lane; R5.32's Studio half) | **shipped** | 2.9 (PR #3288) |
 | A candidate's own setup failure, played: the diagnostic goes from baseline to attributed failure to repair to the same frozen scenarios passing (R5.32; the certification window's case 9) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
@@ -2162,7 +2162,7 @@ whether the activation was called and whether any input was sent:
 
 Each check removed in turn fails a test.
 
-**R5.37 as built** (the MacBook lane, 2026-11-27; PR #PRNUM, closing #3300). The two readings the rule asked for, both
+**R5.37 as built** (the MacBook lane, 2026-11-27; PR #3302, closing #3300). The two readings the rule asked for, both
 taken by hand on the MacBook with the worker stopped and nothing claimed, on Studio 0.748.0.7481526 and Darwin 25.5,
 with the owner's go-ahead in the MacBook session:
 
