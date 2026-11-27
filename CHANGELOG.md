@@ -121,6 +121,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     correction starts.
   - A suite the image ran and failed, which the runner may overrule (#2818), is still a failed attempt.
     `dispatch_with_retry` takes a required `hand_off`; `dispatch_task` is unchanged.
+- **Three deploy checks read the version their image's lock pins** (found at the 2.9 interim deploy, 2026-11-27):
+  the two delivered-lint rows expected `ruff 0.16.6` and the agent's delivery row expected `redis 8.1.0`, each
+  written as a literal, and the dependency move of 2026-11-26 (#3101) took both past them. `verify_loaded.py` read
+  3 rows as not loaded on a deploy that was right. Each row now compares what runs with the image's own
+  `requirements/agent.lock`, and prints both on a mismatch.
 - **A requalification names a tool whose definition changed** (#3230; SIP-0117 R5.31; the 2.9 plan's item 11):
   a qualification record held one digest for Studio's whole tool list, so a tool redescribed under the same name
   read `tools added [], removed []`. On 2026-11-20 two such changes were found only by diffing dumps by hand.
