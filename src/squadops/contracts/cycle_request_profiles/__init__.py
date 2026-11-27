@@ -34,6 +34,10 @@ CAMPAIGN_PROFILES = (
     "campaign-increment-source-wrong-text",
     # #3222: its row-8 diagnostic copy, whose client stops at start and which corrects nothing in-run.
     "campaign-increment-source-client-stops",
+    # #3284: the 2.9 certification window's two diagnostics. The same throw with in-run correction
+    # on (case 9), and a client that stalls and raises nothing (case 10).
+    "campaign-increment-source-client-stops-corrected",
+    "campaign-increment-source-client-stalls",
 )
 
 _PROFILES_PACKAGE = "squadops.contracts.cycle_request_profiles.profiles"
