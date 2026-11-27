@@ -387,18 +387,28 @@ checks:
     what: the qa image lints a delivered tree with ruff and the pinned ESLint, both running
     container: squadops-eve
     code: |
+      import pathlib, re
       from squadops.capabilities.delivered_lint import lint_delivered
+      # The ruff that runs is the one the image's own lock pins (#3101 moved it, and a version
+      # written here was left behind): a mismatch prints both.
+      locked = re.search(r"^ruff==(\S+)", pathlib.Path("/app/requirements/agent.lock").read_text(), re.M).group(1)
       found = lint_delivered({"a.py": "import os\n", "b.js": "export const x = 1;\n"})
-      print(sorted(found["tools"].values()), found["unavailable"])
-    expect: "['10.12.0', 'ruff 0.16.6'] {}"
+      eslint, ruff = sorted(found["tools"].values())
+      print(eslint, ruff == f"ruff {locked}" or (ruff, locked), found["unavailable"])
+    expect: "10.12.0 True {}"
   - id: "1937-han"
     what: the generalist's image lints a delivered tree as the qa image does
     container: squadops-han
     code: |
+      import pathlib, re
       from squadops.capabilities.delivered_lint import lint_delivered
+      # The ruff that runs is the one the image's own lock pins (#3101 moved it, and a version
+      # written here was left behind): a mismatch prints both.
+      locked = re.search(r"^ruff==(\S+)", pathlib.Path("/app/requirements/agent.lock").read_text(), re.M).group(1)
       found = lint_delivered({"a.py": "import os\n", "b.js": "export const x = 1;\n"})
-      print(sorted(found["tools"].values()), found["unavailable"])
-    expect: "['10.12.0', 'ruff 0.16.6'] {}"
+      eslint, ruff = sorted(found["tools"].values())
+      print(eslint, ruff == f"ruff {locked}" or (ruff, locked), found["unavailable"])
+    expect: "10.12.0 True {}"
   - id: "1031"
     what: the framing gate knows each error code's conventional status, and reports an unwarranted departure
     container: squadops-runtime-api
@@ -1005,13 +1015,16 @@ checks:
     what: "an agent bounds a dispatched task by its attempts in Redis, and hands a failed delivery back"
     container: squadops-eve
     code: |
+      import pathlib, re
       import redis
       from squadops.agents.entrypoint import AgentRunner
       from squadops.config.schema import CommsDeliveryConfig
       from squadops.ports.comms.queue import AckPolicy
+      # The client that runs is the one the image's own lock pins: a mismatch prints both.
+      locked = re.search(r"^redis==(\S+)", pathlib.Path("/app/requirements/agent.lock").read_text(), re.M).group(1)
       d = CommsDeliveryConfig()
-      print(redis.__version__, AckPolicy.REDELIVER_ON_FAILURE.value, hasattr(AgentRunner, "_deliver_task"), d.max_attempts, d.dead_letter_queue)
-    expect: "8.1.0 redeliver_on_failure True 3 comms.dlq"
+      print(redis.__version__ == locked or (redis.__version__, locked), AckPolicy.REDELIVER_ON_FAILURE.value, hasattr(AgentRunner, "_deliver_task"), d.max_attempts, d.dead_letter_queue)
+    expect: "True redeliver_on_failure True 3 comms.dlq"
   - id: "2333-runtime"
     what: "the runtime stamps each send of a task with its own id"
     container: squadops-runtime-api
