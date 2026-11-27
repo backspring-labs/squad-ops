@@ -687,3 +687,116 @@ a set missed it. No set has missed it.
 **What it gives up.** A counted after set may now start on a Mac up to 0.6 of a load point busier than the
 before set's start (1.87). The record shows all four readings side by side, so a reader can see how far apart they
 were.
+
+### 13e. Rehearsal 1's reading, and how cases 2 to 6, 8 and 14 are run in the window (2026-11-27)
+
+**What changed.** Seven things, each written before the window opens. No case's pass or fail condition changes.
+
+1. **The exit rule is read as met by rehearsal 1 for the seven cases it ran, and case 2 is rehearsed at the
+   window's opening.** §6 lists eight cases for a rehearsal. Rehearsal 1 ran seven of them (1, 5, 6, 8, 9, 10 and
+   11). It could not run case 2: the worker brings Studio forward only inside the dedicated window, whose four
+   values are the owner's to write (D12), and they were not written while the rehearsal ran. So:
+   - case 2 gets one uncounted rehearsal inside the window, before case 2 is counted and before the owner's
+     sitting for cases 3 and 4;
+   - a seam finding in it is handled as §2 handles any rehearsal's: the fix merges, the deploy or the worker's
+     checkout is superseded, and any case already counted on the superseded one is counted again;
+   - the budget of two rehearsals stands. The cut record reports one rehearsal of seven cases and case 2's own.
+2. **Cases 2, 5, 6 and 8 are acted out on a second Campaign of case 1's definition,** in that order, and case 1's
+   own Campaign is left untouched from start to finish. §7 allowed either ("during case 1's Campaign, or one like
+   it"). Case 8's abort ends the second Campaign, so it can't be case 1's.
+3. **Cases 3 and 4 are single queued plays, not plays of a Campaign.** Each is one play of the registered
+   qualification scenario on the baseline, queued by the Spark lane with `measured_play_set.py play --plays 1`
+   when the MacBook lane says the owner is ready. A Campaign's next play arrives when its build ends, which
+   nobody can time to a person sitting down. The result's keys are read exactly as §7 says. The lines "the
+   increment is retried later" and "the increment is retried by the Campaign" don't apply: no increment waits on
+   these plays.
+4. **Case 8's "next play" is one queued play, read at once.** After the abort the Spark lane queues one play of
+   the registered scenario on the baseline, the same way, and reads its `place_baseline`. §7 named "the next
+   Campaign's first play", which may be an hour later and behind a worker restart; a play queued at once reads
+   the place the aborted play left.
+5. **The worker runs as a plain process through the window,** started from the main checkout by one command, as
+   it ran for the before set and for the rehearsal. §3's check 5 said "as its installed service", and 13b had
+   changed that for the measured sets only. For cases 5 and 6, "stops the worker's service" is the stop a service
+   manager gives: SIGTERM to the worker's process, then SIGKILL if it hasn't exited in ten seconds. The restart
+   is the same command, straight after the stop.
+6. **The shakeout pair played on 2026-11-27 stands as case 14.** 13c let it run before the Campaign cases'
+   rehearsal, on the final deploy. It did, and the deploy has not been superseded since. If the deploy is
+   superseded before the cut, the pair is played again.
+
+7. **A proposal whose scenario uses `move_to` is returned at the gate** as `criteria_not_checkable`, by §5's
+   bar. The action can't arrive as the reader stands (#3298): `play.py` waits for arrival on
+   `@player.Character.HumanoidRootPart`, and the reader's `resolve` walks a path by child lookup, where a
+   player's character is a property and not a child. So the step reads `setup_failed` on the baseline and on
+   any candidate, and an assertion behind it never executes. The MacBook lane read this by hand on the pin
+   after the rehearsal, with the worker stopped and nothing claimed: one play that read the path as `absent`
+   with the character spawned, and one that failed its `move_to` after 25 s. No rehearsed scenario uses the
+   action, and no ruling already made changes. The reader is not changed before the cut: a fix moves
+   `harness.observe`'s digest, and with it the environment every certified play names. It goes to the first
+   patch after the cut, with its own requalification, and §11 carries it until then.
+
+**Who ruled.**
+- Points 1 to 4, 6 and 7: the Spark lane, which wrote this registration and supervises the Campaigns (D13), under
+  the owner's grant of 2026-11-26. Case 2's ordering was put to the owner on 2026-11-27 in the Spark lane's plan
+  for the window. The owner questioned that plan's hours and did not speak to the ordering, so it is the
+  Spark lane's reading of the exit rule and not the owner's ruling. The plan asks for "a full pass", and a
+  missed done-when's disposition is the owner's (D16), so the owner may overrule it before the window opens.
+- Point 5: the owner, on 2026-11-27. The Spark lane recommended the plain process when it laid out how the
+  worker runs in the window, and the owner answered: "Im good with your recommendations on all other
+  decisions."
+- The MacBook lane acted out cases 5 and 6 in the rehearsal and read each ruling at its gate.
+
+**Rehearsal 1, uncounted,** on the final deploy `dep_8ce04da70a65` (main at `f35c714b`), 2026-11-27, with nobody
+at the Mac. The worker ran from main at `4ceba696`. Every case it ran met its pass condition, and no seam finding
+was made.
+
+| Step | Case | Campaign | From, to (ET) | What it read |
+|---|---|---|---|---|
+| A | 9 | `cmp_eac9d55c48f9` | 06:57, 07:24 | `setup_failed`, attributed, one correction dispatched and spent, the same scenario digests before and after, the increment accepted |
+| B | 10 | `cmp_37dbef8e83a7` | 07:25, 08:07 | `setup_failed`, not attributed, no correction dispatched, the cycle `blocked_unverified`; then the Campaign's own row 8 and an accepted repair cycle |
+| C | 11 | `cmp_ee48e5bc3785` | 08:07, 08:48 | the injected error attributed, no correction left to dispatch; rows 5, 8 and 3; the cycle's views agree on 33 of 33 readings |
+| D | 1 | `cmp_fec2f4dd5981` | 08:48, 09:58 | both increments accepted, C1 to C7 holding for each; fourteen plays, none needing a person; B-1's scenarios replayed and passing on B-2's candidate |
+| E | 5 | `cmp_c7e6a25c3182` | 10:17 | the worker stopped with nothing claimed and started; the new session's tool list is the pin's; nothing was queued while it was down |
+| E | 6 | the same | 10:20, 10:23 | the worker stopped 11 s into a claim; attempt 1 `expired`, attempt 2 accepted with the outcome an undisturbed run gave; one accepted result, no late result |
+| E | 8 | the same | 10:23, 10:26 | the abort's answer counts one operation cancelled; the worker answers `interrupted`, naming what it ran on; nothing queued after; the next play reads the pin's place baseline |
+
+- **Plays:** 50 operations over the five steps, 51 attempts, no refusal. 49 completed and one was interrupted
+  (case 8's). Every result names the pin's place baseline. Five results carry a script error, all in steps
+  A and C, whose profiles inject a script that raises. Step B's fault waits and raises nothing.
+- **Rulings at the increment gate:** six proposals and eight rulings. Four proposals were approved as first
+  proposed. Two were returned first, both `criteria_not_checkable` by §5's bar (step B's, and step D's second
+  item), and each was approved on its revision.
+- **Interventions:** none outside the cases themselves.
+- **Two readings of how the cases behave,** neither a finding:
+  - *Case 6.* The registry ends an earlier session's attempt when the same worker registers again. With the
+    restart straight after the stop, attempt 1 ended at the new registration, 53 s after its claim and before
+    its 60 s lease ran out, with outcome `expired`. §7's "the lease runs out" reads either way: the attempt is
+    ended by the runtime, never by a result from the stopped worker.
+  - *Case 8.* The worker hears a cancellation on its lease watch's next turn. The abort came 49 s into the
+    claim, the worker stopped the play 12 s later, and its answer followed the tool's reset 34 s after that.
+- **Studio's memory at a Campaign's pace:** over step D's fourteen plays and 70 minutes, Studio's resident
+  memory went from 3.1 GB down to 1.6 GB and back to 3.0 GB, rising with plays and falling while Studio idled.
+  The measured sets' growth of 1.6 GB over twenty plays was play after play with no idle between.
+
+**What rehearsal 1 doesn't show,** added to §11 for the window as well where it says so:
+- **Case 2,** for the reason in point 1. Cases 3, 4, 7, 12 and 13 are not a rehearsal's (§6); 12 and 13 had
+  their own uncounted rehearsals (13a, 13b).
+- **Case 5's second branch.** The tool list was the pin's after every launch of Studio in the rehearsal, so the
+  refusal of a moved list and the requalification after it were not exercised. They are exercised in the window
+  only if the list moves.
+- **A quiet Mac.** The Mac's own stack was running through the rehearsal, where the plan asks for none through a
+  rehearsal's plays. The rehearsal was not held to the quiet bar and its play times are not compared with the
+  measured sets'. For the window the stack is stopped (§3, check 5).
+- **Where the proposals came from, in the rehearsal and in the window.** On every proposal run the proposer is
+  supplied the project's one approved lesson. That lesson was drafted from the 2.8 run's two items: it names
+  the defect each proposal first had, and it carries the form of the check that passes the second item (#3297).
+  So a proposal that meets §5's bar at its first reading is no evidence that the squad worked the bar out, and
+  the counts of returned proposals are read with that said beside them. The owner ruled on 2026-11-27 that the
+  lesson stays through 2.9 and is corrected in 2.10. What the cases certify, the worker's unattended execution
+  and the runtime's handling of it, doesn't rest on who shaped the proposal.
+- **`move_to`, in the window and in the release.** No scenario that walks the character to a point is
+  certified, because none can pass (point 7, #3298). The held key (`hold_key`) is the only movement the
+  window's plays use.
+- **The deploy against main.** Four merges followed the final deploy: two reading scripts and their tests
+  (`host_quiet_reading.py`, `measured_play_set.py`), and documents. None is loaded by the runtime or an agent,
+  so the deploy is not superseded. The worker's checkout carries the first of them and the Spark's tool the
+  second.
