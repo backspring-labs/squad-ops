@@ -35,6 +35,16 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   on 2026-11-26 one pull request was resolved three times, each a push and a full CI run. An id held in two
   files is refused, and a test refuses a row appended to the old file.
 ### Added
+- **Each stage of a Studio play is timed, and the worker's Mac can be read for how busy it is** (#3250, the 2.9
+  plan's item 13, the instrument only): the certification window's matched sets need to know where a play's
+  ~100 s goes before anything is cut.
+  - A completed play's result carries `stages.json`: the time of each of the transaction's stages, in the order they
+    run, and of each wait the scenario made. A stage that raised is timed to where it stopped and named.
+  - Read live on 2026-11-27: of a 97.2 s play, the three reads of the place's non-script state took 22.5 s each,
+    the sync 14.1 s and the scripts' read-back 7.1 s; the scenario itself took 1.8 s.
+  - `scripts/dev/host_quiet_reading.py` prints the Mac's load, memory, loaded models, Docker and the CPU and memory
+    of Studio and the worker, with every other process as a count and a total, never by name.
+
 - **A dedicated worker brings Studio to the front, inside its declared window** (#3193; SIP-0117 R5.33; the 2.9
   plan's item 12): a scenario that clicks acts only on a Studio in front, and a worker that found another app in
   front refused the play. On a worker its owner declares dedicated, inside the window its owner declares, the

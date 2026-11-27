@@ -61,6 +61,7 @@ from adapters.remote_execution.game_dev_roblox_studio.session import (
     ToolCheck,
     tool_changes,
 )
+from adapters.remote_execution.game_dev_roblox_studio.stages import STAGES_NAME, PlayStages
 from adapters.remote_execution.game_dev_roblox_studio.studio_app import (
     MacStudioApp,
     PlaceFiles,
@@ -344,18 +345,20 @@ class RobloxStudioRunner(OperationRunnerPort):
         proved: ProvedOn,
     ) -> RemoteOperationResult:
         """The transaction, begun again once after a reset when the place drifted."""
+        stages = PlayStages()
         try:
-            return await self._transaction(request, declaration, manifest, files, proved)
+            return await self._transaction(request, declaration, manifest, files, proved, stages)
         except _Drifted as drifted:
             try:
-                await self._reset_held()
+                with stages.stage("reset_s"):
+                    await self._reset_held()
             except (place.PlaceStateError, place.PlaceReadError, StudioSessionError,
                     OSError) as e:  # fmt: skip
                 return self._ended(request, OperationStatus.NOT_EXECUTED,
                                    f"nothing was run: {drifted}, and the reset failed: "
                                    f"{type(e).__name__}: {e}", tool_unready=True)  # fmt: skip
         try:
-            return await self._transaction(request, declaration, manifest, files, proved)
+            return await self._transaction(request, declaration, manifest, files, proved, stages)
         except _Drifted as drifted:
             return self._ended(request, OperationStatus.NOT_EXECUTED,
                                f"nothing was run: {drifted}, after a reset",
@@ -368,9 +371,10 @@ class RobloxStudioRunner(OperationRunnerPort):
         manifest: Mapping[str, place.ScriptText],
         files: PlaceFiles,
         proved: ProvedOn,
+        stages: PlayStages,
     ) -> RemoteOperationResult:
         """One attempt at the transaction. Raises :class:`_Drifted`, before anything is
-        written, when the place isn't its pinned baseline."""
+        written, when the place isn't its pinned baseline. Each stage is timed (#3250)."""
         self._established = dict(self._run_facts)
         uses_input = any(a.action in play.STUDIO_INPUT_ACTIONS for a in (*declaration.setup,
                                                                           *declaration.steps))  # fmt: skip
@@ -378,8 +382,10 @@ class RobloxStudioRunner(OperationRunnerPort):
         playing = False
         front: FrontRecord | None = None
         try:
-            check = await session.open()
-            live = self._held_to_proof(check, proved)
+            with stages.stage("session_open_s"):
+                check = await session.open()
+            with stages.stage("proof_s"):
+                live = self._held_to_proof(check, proved)
             # R5.29: the Studio the qualification names, and the one this play runs on, once
             # the running one has been read and held to it.
             self._establish(
@@ -392,43 +398,59 @@ class RobloxStudioRunner(OperationRunnerPort):
             if uses_input:
                 # R5.18 after R2.4 and R5.29 (R5.33's condition 6): the Studio a dedicated
                 # worker would bring forward is a proved one, already running.
-                front, refused = self._in_front(request)
+                with stages.stage("front_s"):
+                    front, refused = self._in_front(request)
                 if refused is not None:
                     return refused
                 # Once read: a play cancelled from here on names how Studio came to the front.
                 self._establish(front.ran_with() if front is not None else {})
-            studio = await place.identity(session, discover_seconds=self._discover_seconds)
+            with stages.stage("identity_s"):
+                studio = await place.identity(session, discover_seconds=self._discover_seconds)
             sid = studio.studio_id
-            pinned = await place.baseline(session, sid)
+            with stages.stage("place_state_s"):
+                pinned = await place.baseline(session, sid)
             if pinned.digest != files.baseline_digest:
                 raise _Drifted(
                     f"the place holds non-script baseline {pinned.digest[:16]}…, not the pinned "
                     f"{files.baseline_digest[:16]}…"
                 )
-            await place.sync(session, sid, manifest)
-            marked = await place.marked_scripts(session, sid)
+            with stages.stage("sync_s"):
+                await place.sync(session, sid, manifest)
+            with stages.stage("marks_s"):
+                marked = await place.marked_scripts(session, sid)
             if marked:
                 raise place.PlaceStateError(
                     "synced scripts carry attributes or tags: " + "; ".join(marked)
                 )
-            before = await place.baseline(session, sid)
+            with stages.stage("baseline_before_s"):
+                before = await place.baseline(session, sid)
             self._establish({"place_baseline": before.digest[:16]})
-            await place.start_play(session, sid)
+            with stages.stage("play_start_s"):
+                await place.start_play(session, sid)
             playing = True
             try:
-                records, log = await play.run_scenario(session, sid, declaration)
+                with stages.stage("scenario_s"):
+                    records, log = await play.run_scenario(
+                        session, sid, declaration, timed=_waits_into(stages)
+                    )
                 self._establish({"play_session": log.session_id})
-                player = await play.observe(
-                    session,
-                    sid,
-                    Observation("property", "client", {"path": "@player", "name": "Name"}),
-                )
-                console = await place.console(session, sid)
+                with stages.stage("player_s"):
+                    player = await play.observe(
+                        session,
+                        sid,
+                        Observation("property", "client", {"path": "@player", "name": "Name"}),
+                    )
+                with stages.stage("console_s"):
+                    console = await place.console(session, sid)
             finally:
-                await place.stop_play(session, sid)
+                with stages.stage("stop_s"):
+                    await place.stop_play(session, sid)
             playing = False
-            after = await place.baseline(session, sid)
-            scripts_after = place.differences(await place.read_scripts(session, sid), manifest)
+            with stages.stage("baseline_after_s"):
+                after = await place.baseline(session, sid)
+            with stages.stage("read_back_s"):
+                read_back = await place.read_scripts(session, sid)
+            scripts_after = place.differences(read_back, manifest)
         except (place.PlaceReadError, place.PlaceSyncError, place.PlaceStateError,
                 StudioSessionError, NotProved) as e:  # fmt: skip
             status = OperationStatus.INTERRUPTED if playing else OperationStatus.NOT_EXECUTED
@@ -465,6 +487,8 @@ class RobloxStudioRunner(OperationRunnerPort):
                     "application/json",
                 ),
                 EvidenceItem(CONSOLE_NAME, redact(console[-CONSOLE_CHARS:])),
+                # #3250: how long each stage took, for the certification window's matched sets.
+                EvidenceItem(STAGES_NAME, stages.document(), "application/json"),
             ),  # fmt: skip
             provider_version=f"{PROVIDER}@{PROVIDER_VERSION}",
             ran_with=self.running_with(),
@@ -897,6 +921,16 @@ class RobloxStudioRunner(OperationRunnerPort):
             return PlayRound(before.digest, len(before.lines))
         finally:
             await session.close()
+
+
+def _waits_into(stages: PlayStages) -> Callable[[str, float], None]:
+    """What ``run_scenario`` reports of each action, kept for a wait (#3250)."""
+
+    def timed(action: str, seconds: float) -> None:
+        if action == "wait_until":
+            stages.wait(seconds)
+
+    return timed
 
 
 def _redactor(name: str) -> Callable[[str], str]:
