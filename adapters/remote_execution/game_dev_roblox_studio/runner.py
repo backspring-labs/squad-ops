@@ -417,6 +417,17 @@ class RobloxStudioRunner(OperationRunnerPort):
                     f"the place holds non-script baseline {pinned.digest[:16]}…, not the pinned "
                     f"{files.baseline_digest[:16]}…"
                 )
+            # R5.36 (#3250): the pin check's own reading is this play's "before". The sync writes
+            # only inside the synced folders, which the state read leaves out, so a read after it
+            # saw nothing a read after play doesn't.
+            self._establish({"place_baseline": pinned.digest[:16]})
+            missing = place.missing_synced_roots(pinned, manifest)
+            if missing:
+                return self._ended(request, OperationStatus.NOT_EXECUTED,
+                                   "nothing was run: the place has no " + ", ".join(missing)
+                                   + ", which the sync would create, so the place's state after "
+                                   "play could never match its pin. The place file needs it, and "
+                                   "a requalification on it", tool_unready=True)  # fmt: skip
             with stages.stage("sync_s"):
                 await place.sync(session, sid, manifest)
             with stages.stage("marks_s"):
@@ -425,9 +436,6 @@ class RobloxStudioRunner(OperationRunnerPort):
                 raise place.PlaceStateError(
                     "synced scripts carry attributes or tags: " + "; ".join(marked)
                 )
-            with stages.stage("baseline_before_s"):
-                before = await place.baseline(session, sid)
-            self._establish({"place_baseline": before.digest[:16]})
             # R5.32 (#3200): the console just before play starts and just after, so the lines
             # this play wrote can be told from an earlier play's.
             with stages.stage("console_s"):
@@ -471,11 +479,12 @@ class RobloxStudioRunner(OperationRunnerPort):
                                tool_unready=environment and not playing)  # fmt: skip
         finally:
             await session.close()
-        changes = place.baseline_changes(before, after)
+        changes = place.baseline_changes(pinned, after)
         if changes:
             return self._ended(request, OperationStatus.NOT_EXECUTED,
-                               "the place's non-script state changed through play, so the run "
-                               "proves nothing: " + "; ".join(changes))  # fmt: skip
+                               "the place's non-script state changed between its pin check and "
+                               "the end of play, so the run proves nothing: "
+                               + "; ".join(changes))  # fmt: skip
         if scripts_after:
             return self._ended(request, OperationStatus.NOT_EXECUTED,
                                "scripts changed in Studio while the scenario ran, so the run "

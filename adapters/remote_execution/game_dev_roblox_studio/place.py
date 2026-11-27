@@ -310,6 +310,24 @@ def _placements(
         yield file_path, path, ScriptText(suffix[1], text)
 
 
+def missing_synced_roots(pinned: PlaceBaseline, manifest: Mapping[str, ScriptText]) -> list[str]:
+    """Each folder the sync would have to create, by its path in the state read: a synced root the
+    manifest writes into, or a folder above it below its service, that the pinned state has no line
+    for (R5.36, #3250). The state read holds each root as a line and leaves out what is in it, so
+    a root the sync created would read as a change from the pin after every play."""
+    present = {line.split("\t", 1)[0] for line in pinned.lines}
+    missing: list[str] = []
+    for root in SYNCED_FOLDERS:
+        if not any(path.startswith(root + ".") for path in manifest):
+            continue
+        parts = root.split(".")
+        for depth in range(2, len(parts) + 1):
+            folder = "/".join(parts[:depth])
+            if folder not in present and folder not in missing:
+                missing.append(folder)
+    return missing
+
+
 def differences(read: Mapping[str, ScriptText], manifest: Mapping[str, ScriptText]) -> list[str]:
     """Each way the place's scripts differ from the manifest's, named; ``[]`` when they match."""
     found: list[str] = []

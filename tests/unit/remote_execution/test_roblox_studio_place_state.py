@@ -25,7 +25,13 @@ from tests.unit.remote_execution.test_roblox_studio_read_side import STANDIN, _w
 #: The place's non-script state as the baseline program writes it: path, class, then fields.
 PLATE = "Workspace/Baseplate\tPart\tAnchored=boolean(true)\tCFrame=CFrame(0,-8,0,1,0,0,0,1,0,0,0,1)"
 LAMP = "Workspace/Lamp\tPointLight\tBrightness=1\tEnabled=boolean(true)"
-BASELINE = ["Lighting\tLighting\tClockTime=14", LAMP, PLATE]
+BASELINE = [
+    "Lighting\tLighting\tClockTime=14",
+    LAMP,
+    PLATE,
+    # The synced root the stand-in's requests write into, as a real place holds it (R5.36).
+    "ServerScriptService/Server\tFolder",
+]
 
 
 def _runner(world: Path) -> RobloxStudioRunner:
@@ -55,7 +61,7 @@ async def test_a_play_round_holds_the_place_and_stops_play(tmp_path):
     calls = _calls(tmp_path)
     starts = [i for i, c in enumerate(calls) if c == "start_stop_play"]
     baselines = [i for i, c in enumerate(calls) if c == "execute_luau:baseline"]
-    assert (held.instances, len(held.baseline_digest)) == (3, 64)
+    assert (held.instances, len(held.baseline_digest)) == (len(BASELINE), 64)
     assert calls.index("execute_luau:identity") < calls.index("execute_luau:script_marks")
     assert calls.index("execute_luau:script_marks") < baselines[0] < starts[0]
     assert len(starts) == 2 and baselines[-1] > starts[1]
@@ -106,7 +112,8 @@ async def test_the_baseline_is_read_in_pages_and_released(tmp_path):
     sent = [json.loads(line) for line in (tmp_path / "code.log").read_text().splitlines()]
     payloads = [json.loads(bytes.fromhex(c.split('"')[1]).decode()) for c in sent]
     assert read.lines == tuple(BASELINE)
-    assert len(payloads) == 4 and payloads[-1]["release"] is True
+    # A page a line, then the release.
+    assert len(payloads) == len(BASELINE) + 1 and payloads[-1]["release"] is True
     assert len({p["snapshot"] for p in payloads}) == 1
 
 
