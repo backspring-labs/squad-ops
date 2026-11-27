@@ -1826,6 +1826,63 @@ manifest; the rule that a skills arm is held to its case and the baseline to not
 **Who ruled.** The owner adopted the 2.8.1 plan, whose item 4 names these rules ("Approve the 2.8.1 plan, merge
 it", 2026-11-18). The Spark lane wrote the rules and the cases.
 
+### 17z. A worker's tool is available only when the agent that runs it binds remote execution too (2026-11-26, §8, §9, §17w; SIP-0117 R5.6; #3235)
+
+**What changed.** §17w's check read the runtime's own remote-execution port and a worker. It now also reads the
+port of the agent that runs the tool, from that agent's own report.
+
+**The evidence** (#3235). In the 2.8.1 row-8 window, on 2026-11-19, the Spark set
+`remote_execution.provider` to `runtime_api` and rebuilt only the runtime API. The QA agent's process still bound
+no port.
+- Creation's check read the runtime's port and the worker, and passed. The cycle (`cyc_15ba8b7b7589`) was created.
+- The Campaign's own plays ran, since the runtime asks for them through its port.
+- The cycle's in-run evaluation asked through the QA agent's port, which didn't exist. Both scenario checks read
+  `unverified`, `evaluator_gap:no_remote_execution_port`, and the cycle's outcome read `blocked_unverified` on a gap
+  that was the deploy's.
+- §17w had said an agent's binding "is the same deploy setting, read in its container". It is the same setting
+  only when both were built with it. Nothing compared them.
+
+**The rule.**
+- **An agent says what it binds.** Its heartbeat carries the provider its own port binds, from the configuration
+  that binds it (`agent_status.remote_execution`, migration 1161). Each heartbeat replaces what the last one said.
+- **`unavailable`** takes the agent that runs the tool and a reader of that report. For a worker's tool, after the
+  runtime's own port, each of these is the refusal:
+  - the agent has sent no heartbeat;
+  - it isn't being heard from, by the health checker's own freshness window (asked at creation only);
+  - its heartbeat doesn't say, because it was built before agents reported it;
+  - it reports `none`.
+- **Every refusal names** the agent, what was expected of it and what it said, the revision it runs and when it
+  last reported.
+- **At creation,** the reader is the health checker that keeps the heartbeats (`CreationPorts.agent_report`), for
+  an operator's cycle and a Campaign's launch alike.
+- **At dispatch,** `_require_tool_available` reads it again for the agent the task goes to, without asking that the
+  report be fresh: an agent late with a heartbeat keeps what it last said, so a busy one is never refused. The
+  heartbeat is sent by a task of its own every 30 s against a 90 s window, and blocking work runs off the agent's
+  event loop, so a late one is not expected; the rule doesn't rest on that. An agent recreated
+  without the provider after the cycle was created has its task ended there, `infrastructure_failed` and
+  `worker_unavailable`, which the Campaign's relaunch budget already reads as the environment's (SIP-0117 R5.10).
+- **In the handler,** an agent with no port still reports the operation `not_executed`. That result is now flagged
+  `unavailable`, as no worker taking it is, so a reading left by it is retried and never repaired.
+- The reader is required of both callers. A runtime that keeps no agent reports refuses a worker's tool, by name.
+
+**What it doesn't read.** Whether the agent's port reaches the runtime: an agent that binds `runtime_api` with a
+wrong address or no identity is refused by the runtime at its first request, and that is raised where it happens.
+
+**The evidence it works.**
+- `tests/unit/api/test_tool_preflight.py`: each of the four refusals and a runtime with no reports, entered at the
+  preflight decision; the same cycle created once its agent reports the provider; `CreationPorts.of_request`
+  reading the health checker's reader; and, at the executor's `_require_tool_available`, an agent that binds none
+  ending the run as the environment's.
+- `tests/unit/agents/test_heartbeat_says_what_remote_execution_the_agent_binds.py`: the wiring from the agent's
+  `_send_heartbeat` through the real reporter and route to the row, and the read back, including an agent that
+  hasn't said and one not heard from.
+- `tests/unit/capabilities/test_run_remote_operation.py`: the handler's reading with no port is flagged.
+- Loaded-check rows `3235-agent-reports-remote-execution` and `3235-agent-says-what-it-binds`.
+
+**Who ruled.** The owner adopted the 2.9 plan on 2026-11-26. Its item 1 states the rule: a component's capability
+is read from the component itself, a cycle without it is refused at creation by name, and capability lost during
+a run is the environment's. The Spark lane built it.
+
 ### 17aa. A stop a skill declares outranks the task's own requirements (2026-11-26, §7, §17o, §17u; the 2.9 plan's item 9 and ruling D4; #3240)
 
 **What changed.** §7 ranks a task's skills below its own requirements: where they disagree, the model follows

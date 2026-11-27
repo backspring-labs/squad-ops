@@ -752,6 +752,14 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         goal_sets=state.goal_set_registry,
     )
 
+    async def _agent_report(agent_id: str):
+        """What ``agent_id`` last said of its own remote-execution port (#3235). ``None`` when
+        it has sent no heartbeat, or this runtime keeps none (it has no pool)."""
+        checker = getattr(state, "health_checker", None)
+        if checker is None:
+            return None
+        return await checker.agent_remote_execution(agent_id)
+
     flow_executor = create_flow_executor(
         "dispatched",
         cycle_registry=cycle_registry,
@@ -800,6 +808,9 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         sandbox=sandbox_client,
         remote_execution=remote_execution,
         worker_registry=worker_registry,
+        # #3235: read when an operation task is dispatched. The health checker that keeps the
+        # agents' heartbeats is built after this executor, so it is read at each call.
+        agent_report=_agent_report,
         # SIP-0109 §24co: a repository-backed increment's client routes are read on the product
         # started from its declaration, by the same runner the cycle-end hook evaluates with.
         route_renderer=DeclaredStartRoutes(scenario_runner),
@@ -883,6 +894,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         worker_registry=worker_registry,
         sandbox_client=sandbox_client,
         remote_execution=remote_execution,
+        # #3235: a Campaign's launch reads each agent's own report, as the create route does.
+        agent_report=_agent_report,
         source_repository=state.source_repository,
     )
     branch_rebase = _branch_rebase(

@@ -156,17 +156,18 @@ class TestRoutineSuccessesLeaveTheAccessLog:
 
         from squadops.api.routes.agent_status import create_or_update_agent_status
         from squadops.api.runtime.main import ROUTINE_ACCESS, create_app, health_check
+        from tests.unit.api.served_routes import served
         from tests.unit.cli.test_integration import _test_config
 
         app = create_app(_test_config())
-        served = {
+        quieted = {
             (method, route.path)
-            for route in app.routes
-            if isinstance(route, APIRoute)
+            for route in served(app)
+            if isinstance(route.route, APIRoute)
             and route.endpoint in (create_or_update_agent_status, health_check)
             for method in route.methods
         }
-        assert served == set(ROUTINE_ACCESS)
+        assert quieted == set(ROUTINE_ACCESS)
 
     async def test_a_served_request_keeps_its_line_only_when_it_is_news(self, monkeypatch):
         """Entered at a real uvicorn server, whose startup logging config is applied after the

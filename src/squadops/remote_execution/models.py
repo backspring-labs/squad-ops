@@ -174,7 +174,8 @@ class RemoteOperationResult:
     #: #3045: no worker took it. None served or reached the operation when it was asked for,
     #: or none claimed it before its requester's wait ran out. A fact about the workers, never
     #: about the work: set only by a requester, from the registry's ``NoWorker`` or its own
-    #: wait, and never on a result a worker returned. A worker that claimed it and then went
+    #: wait, or by the handler whose agent binds no port to ask through (#3235), and never on
+    #: a result a worker returned. A worker that claimed it and then went
     #: silent is not this (its lease lapsing is ``interrupted``; whether it ran is unknown).
     unavailable: bool = False
     #: #3192: a worker took it, and its tool couldn't run it now, for a reason of the worker's

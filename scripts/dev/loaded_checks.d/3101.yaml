@@ -1,0 +1,27 @@
+checks:
+  - id: "3101-runtime-moved"
+    what: the runtime API runs the FastAPI and Starlette the caps of 2026-11-15 held back, and serves its routes through the included-router table (#3101)
+    container: squadops-runtime-api
+    code: |
+      import importlib.metadata as m
+      from fastapi import APIRouter, FastAPI
+      from fastapi.routing import iter_route_contexts
+      v = lambda n: tuple(int(p) for p in m.version(n).split(".")[:2])
+      r = APIRouter(prefix="/api/v1/x")
+      r.add_api_route("/a", lambda: 1)
+      app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+      app.include_router(r)
+      print(v("fastapi") >= (0, 163), v("starlette") >= (1, 0), [c.path for c in iter_route_contexts(app.routes)])
+    expect: "True True ['/api/v1/x/a']"
+  - id: "3101-publisher-names-a-failure"
+    what: an agent publishes on aio-pika 10.2 or later, and a publish failure whose own text can't be built is still named by its type and arguments (#3101)
+    container: squadops-max
+    code: |
+      import importlib.metadata as m
+      from adapters.comms.rabbitmq import _said
+      class Unsayable(Exception):
+          def __str__(self):
+              raise AttributeError("no frame")
+      v = lambda n: tuple(int(p) for p in m.version(n).split(".")[:2])
+      print(v("aio-pika") >= (10, 2), _said(Unsayable("NO_ROUTE", "q")))
+    expect: "True Unsayable('NO_ROUTE', 'q')"

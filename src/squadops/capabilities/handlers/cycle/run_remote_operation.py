@@ -168,10 +168,16 @@ class QARunRemoteOperationHandler(CapabilityHandler):
         )
         port = getattr(context.ports, "remote_execution", None)
         if port is None:
+            # #3235: a fact about this agent's deploy, never about the work: no worker could be
+            # asked. A cycle is refused at creation, and its task at dispatch, when the agent
+            # reports no port, so this is reached only by an agent that binds none after
+            # saying it bound one. Flagged as no worker taking it is, so the Campaign retries
+            # the increment and never repairs the candidate for it.
             result = RemoteOperationResult(
                 OperationStatus.NOT_EXECUTED,
                 reason="this agent has no remote-execution port bound",
                 dispatch_id=request.dispatch_id,
+                unavailable=True,
             )
             operation_reason = REASON_NO_PORT
         else:

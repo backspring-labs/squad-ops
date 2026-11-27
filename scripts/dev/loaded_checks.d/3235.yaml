@@ -1,0 +1,21 @@
+checks:
+  - id: "3235-agent-reports-remote-execution"
+    what: a worker's tool is refused when the agent that runs it reports no remote execution, naming the agent, its revision and when it said so (SIP-0116 §17z)
+    container: squadops-runtime-api
+    code: |
+      from datetime import datetime
+      from squadops.capabilities.tool_checks import AgentRemoteExecution, agent_cant_ask
+      at = datetime(2026, 11, 26, 15, 0)
+      none = agent_cant_ask("eve", AgentRemoteExecution("none", "3f2a91c", at, True), heard_from_now=True)
+      late = AgentRemoteExecution("runtime_api", None, at, False)
+      print("binds no remote execution" in none, "revision 3f2a91c" in none, agent_cant_ask("eve", late, heard_from_now=False), agent_cant_ask("eve", late, heard_from_now=True) is not None, agent_cant_ask("eve", None, heard_from_now=False) is not None)
+    expect: "True True None True True"
+  - id: "3235-agent-says-what-it-binds"
+    what: the QA agent's heartbeat carries the remote-execution provider its own port binds, and its handler flags a reading it had no port for (SIP-0116 §17z)
+    container: squadops-eve
+    code: |
+      import inspect
+      from squadops.agents.entrypoint import AgentRunner
+      from squadops.capabilities.handlers.cycle import run_remote_operation as h
+      print("remote_execution=self._bound_remote_execution()" in inspect.getsource(AgentRunner._send_heartbeat), "unavailable=True" in inspect.getsource(h))
+    expect: "True True"

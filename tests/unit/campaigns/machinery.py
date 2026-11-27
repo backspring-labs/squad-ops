@@ -59,6 +59,7 @@ from squadops.campaigns.increment_tree import INCREMENT_EVALUATION_ARTIFACT_TYPE
 from squadops.campaigns.progress import CampaignProgress
 from squadops.capabilities import capability_contracts, skillsets
 from squadops.capabilities.handlers.cycle import run_remote_operation
+from squadops.capabilities.tool_checks import AgentRemoteExecution
 from squadops.comms.queue_message import QueueMessage
 from squadops.contracts.cycle_request_profiles import load_profile
 from squadops.cycles.cycle_assessment import AssessorIdentity
@@ -489,6 +490,12 @@ class _Allows:
         return []
 
 
+async def _agents_bind_remote_execution(agent_id: str) -> AgentRemoteExecution:
+    """Every agent of the scripted squad says its own port binds ``runtime_api`` (#3235), as
+    one built with the provider does."""
+    return AgentRemoteExecution("runtime_api", "machinery", T0, True)
+
+
 async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Machinery:
     """``campaign``: the executor's Campaign side wired as the runtime wires it, a cycle's end
     heard by ``CampaignProgress`` and each launch built by ``CampaignLaunchService`` through the
@@ -604,6 +611,7 @@ async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Mac
         goal_set_registry=None,
         remote_execution=remote_execution,
         worker_registry=path.registry,
+        agent_report=_agents_bind_remote_execution,
     )
     # The requester's routes read the executor's own router for the send that is current (R5.6).
     path.world.app.state.reply_router = executor._reply_router
@@ -620,6 +628,7 @@ async def compose(tmp_path: Path, monkeypatch, *, campaign: bool = False) -> Mac
                 artifact_vault=vault,
                 tool_authorities={PROVIDER: authority},
                 worker_registry=path.registry,
+                agent_report=_agents_bind_remote_execution,
                 remote_execution=remote_execution,
                 # §17n: the managed clone the fixture tool's authority is shown the product from.
                 source_repository=clones,
