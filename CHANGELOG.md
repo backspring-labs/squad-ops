@@ -85,6 +85,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     not itself marked cancelled read `created`; it reads `cancelled`.
   - The workload-progress alignment and the reading moved from the API's mapping into `cycles/lifecycle.py`,
     so the route, the list and the registries share one definition.
+- **A hand play's log carries `ran_with`** (#3243; the 2.9 plan's item 10): `scripts/dev/studio_play_scenario.py`
+  printed a play's status, its assertions and its evidence, and dropped the result's `ran_with`. So a hand play's
+  log named neither the Studio it ran on nor the qualification it was held to, and the identity of the 32 hand
+  plays of 2026-11-20 had to be read another way.
+  - The script prints every `ran_with` entry: the qualified and played identities, `qualified_by`, the place
+    baseline, the source revision and the harness digests.
+  - It says whether the play ran on the qualified Studio, and names the parts that differ when it didn't
+    (`runner.identity_difference`). A result with no `ran_with`, or with no Studio identity in it, says so.
 - **A recorded artifact the vault can't return ends the run by name** (#3128, the 2.9 plan's item 4): the
   executor's reads inside a run caught a failed retrieval, logged it and went on. The run then continued without
   its plan, its skeleton, a checkpoint's file or a seed, and a PRD that couldn't be read was handed to every

@@ -124,6 +124,21 @@ class StudioIdentity:
         }
 
 
+#: The parts of a Studio's identity, in the order ``StudioIdentity.named`` gives them.
+IDENTITY_PARTS = ("studio_version", "studio_channel", "studio_tools")
+
+
+def identity_difference(ran_with: Mapping[str, str]) -> tuple[str, ...] | None:
+    """The parts of the played Studio's identity that differ from the qualified one's, read from
+    a result's ``ran_with`` (#3243). ``()`` when they are equal, and ``None`` when the result
+    names neither identity: one refused before the running Studio was read."""
+    qualified = {p: ran_with.get(f"qualified.{p}") for p in IDENTITY_PARTS}
+    played = {p: ran_with.get(f"played.{p}") for p in IDENTITY_PARTS}
+    if all(v is None for v in (*qualified.values(), *played.values())):
+        return None
+    return tuple(p for p in IDENTITY_PARTS if qualified[p] != played[p])
+
+
 @dataclass(frozen=True)
 class ProvedOn(StudioIdentity):
     """What the operation was proved on (R2.4). A Studio that differs from it in version,
