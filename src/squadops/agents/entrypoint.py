@@ -1308,6 +1308,12 @@ class AgentRunner:
             except TimeoutError:
                 pass  # Continue loop
 
+    def _bound_remote_execution(self) -> str | None:
+        """The remote-execution provider this process's own port binds, as its configuration
+        names it (#3235). ``None`` before the configuration is loaded."""
+        config = getattr(self, "_config", None)
+        return config.remote_execution.provider if config is not None else None
+
     async def _send_heartbeat(self) -> None:
         """Send a single heartbeat."""
         if not self._heartbeat_reporter:
@@ -1319,6 +1325,10 @@ class AgentRunner:
             version=SQUADOPS_VERSION,
             # #1720: the version names the release; the revision names the code the agent runs.
             revision=resolve_git_sha(),
+            # #3235: the provider this process's own remote-execution port binds, from the same
+            # configuration that binds it. A cycle whose work needs a worker is refused at
+            # creation when the agent that would ask for it says ``none``.
+            remote_execution=self._bound_remote_execution(),
         )
         logger.debug(
             "Heartbeat sent", extra={"agent_id": self.agent_id, "state": self._lifecycle_state}

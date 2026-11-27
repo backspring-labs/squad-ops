@@ -21,6 +21,7 @@ import yaml
 
 from squadops.api.runtime.agent_labels import get_role_label
 from squadops.api.runtime.host_reading import read_host
+from squadops.capabilities.tool_checks import AgentRemoteExecution
 from squadops.cycles.deploy_record import revision_matches_deploy
 from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.runtime.activity import RuntimeActivityPort
@@ -275,12 +276,13 @@ class HealthChecker:
             await conn.execute(
                 """
                 INSERT INTO agent_status
-                (agent_id, lifecycle_state, last_heartbeat, current_task_id, version, tps, memory_count, updated_at, revision)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                (agent_id, lifecycle_state, last_heartbeat, current_task_id, version, tps, memory_count, updated_at, revision, remote_execution)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 ON CONFLICT (agent_id)
                 DO UPDATE SET
                     lifecycle_state = $2, last_heartbeat = $3, current_task_id = $4,
-                    version = $5, tps = $6, memory_count = $7, updated_at = $8, revision = $9
+                    version = $5, tps = $6, memory_count = $7, updated_at = $8, revision = $9,
+                    remote_execution = $10
                 """,
                 agent_status["agent_id"],
                 agent_status["lifecycle_state"],
@@ -291,11 +293,33 @@ class HealthChecker:
                 agent_status.get("memory_count", 0) or 0,
                 now,
                 agent_status.get("revision"),
+                # #3235: what the agent says its own port binds. Replaced by every heartbeat, so
+                # one that names none clears what an older build of the agent said.
+                agent_status.get("remote_execution"),
             )
         await self._update_runtime_state_heartbeat(
             agent_status["agent_id"], agent_status["lifecycle_state"]
         )
         return {"status": "updated", "agent_id": agent_status["agent_id"]}
+
+    async def agent_remote_execution(self, agent_id: str) -> AgentRemoteExecution | None:
+        """What the agent last said of its own remote-execution port, or ``None`` when it has
+        sent no heartbeat (#3235). A cycle's creation reads it for the agent that runs a
+        worker's tool: the runtime's own provider says nothing of an agent's port."""
+        async with self.pg_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT remote_execution, revision, last_heartbeat FROM agent_status "
+                "WHERE agent_id = $1",
+                agent_id,
+            )
+        if row is None or row["last_heartbeat"] is None:
+            return None
+        return AgentRemoteExecution(
+            provider=row["remote_execution"],
+            revision=row["revision"],
+            reported_at=row["last_heartbeat"],
+            fresh=self._heartbeat_is_fresh(row["last_heartbeat"]),
+        )
 
     async def get_runtime_state(self, agent_id: str) -> dict[str, Any] | None:
         """Return the SIP-0089 AgentRuntimeState for an agent, or None.

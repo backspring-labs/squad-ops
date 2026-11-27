@@ -56,6 +56,7 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
         current_task_id: str | None = None,
         version: str | None = None,
         revision: str | None = None,
+        remote_execution: str | None = None,
         tps: float | None = None,
         memory_count: int | None = None,
     ) -> None:
@@ -66,6 +67,7 @@ class HealthCheckHttpReporter(AgentHeartbeatReporter):
             "current_task_id": current_task_id,
             "version": version,
             "revision": revision,
+            "remote_execution": remote_execution,
             "tps": int(tps) if tps is not None else 0,
             "memory_count": memory_count,
         }

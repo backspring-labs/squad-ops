@@ -54,7 +54,7 @@ from squadops.capabilities.lesson_supply import supply_the_dispatch
 from squadops.capabilities.operation_supply import OperationSupplyError, tool_request
 from squadops.capabilities.skill_stops import describe_stop
 from squadops.capabilities.skillsets import packaged_skillsets
-from squadops.capabilities.tool_checks import unavailable
+from squadops.capabilities.tool_checks import AgentReport, unavailable
 from squadops.capabilities.verification_scaffold_fill import SLOT_SUBJECT_DROPPED_KEY
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
@@ -988,6 +988,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0116 §8 (#3036): read at dispatch for an operation task's tool. Required at the
         # factory; ``None``: no worker tool is available, and such a task's run ends, naming it.
         worker_registry: Any | None = None,
+        # #3235: each agent's own report of the remote execution it binds, read at dispatch for
+        # the agent an operation task goes to. Required at the factory; ``None``: no worker
+        # tool is available, and such a task's run ends, naming it.
+        agent_report: AgentReport | None = None,
         # SIP-0115 §5.2: the goal sets a goal-set Campaign's proposal reads. Required at the
         # factory, the roots' seam. ``None``: such a proposal's run fails, naming it.
         goal_set_registry: GoalSetRegistryPort | None = None,
@@ -1060,6 +1064,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # development, and its readings at an increment's delivery.
         self._remote_execution = remote_execution
         self._worker_registry = worker_registry
+        self._agent_report = agent_report
         self._cancelled: set[str] = set()
         # SIP-0097 §6.4: run-completion collaborator (terminal path). Plain
         # injected collaborator with a default composed from this executor's
@@ -3501,7 +3506,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """SIP-0116 §8 (#3036): an operation task's tool is read available again as it is
         dispatched, since a worker can go offline after the cycle was created. One that isn't
         ends the run ``infrastructure_failed``, classified ``worker_unavailable`` and naming the
-        tool, rather than running to an unverified verdict. Every other task is not asked."""
+        tool, rather than running to an unverified verdict. Every other task is not asked.
+
+        #3235: the agent the task goes to is read again too, by its own report. An agent that
+        was recreated without the provider after the cycle was created binds no port, and its
+        task ends here as the environment's, never as an unverified check the candidate carries."""
         operation = envelope.inputs.get("operation")
         if not runs_an_operation(str(envelope.task_type)) or not isinstance(operation, Mapping):
             return
@@ -3512,9 +3521,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             return
         why = await unavailable(
             tool,
+            agent_id=envelope.agent_id,
             worker_registry=self._worker_registry,
             sandbox_client=self._sandbox,
             remote_execution=self._remote_execution,
+            agent_report=self._agent_report,
+            # The agent has just finished a task or is about to take this one. A heartbeat it
+            # is late with says nothing of its port, so what it last said decides.
+            agent_heard_from_now=False,
         )
         if why is not None:
             raise _ExecutionError(
