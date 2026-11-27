@@ -5,8 +5,9 @@ D14). Nothing below is created or launched before the merge. The owner's outside
 item 12's activation rule (SIP-0117 R5.33), before the window opens (D14). Neither holds the build.
 
 **Written by the Spark lane.** The MacBook lane reads it before it merges, and supplies the facts only its host
-holds: the matched set's scenario files, the per-stage instrument's readings and the quiet-host readings (§7, cases
-12 and 13). Those are frozen here by an amendment (§13) made before the first measured play.
+holds. Its read of 2026-11-26 (PR #3283) supplied the matched set, the owner's part in cases 3 and 4, and how each
+case on the Mac is made to happen with nobody there. What is not built yet, the per-stage instrument's field names
+and the bar for comparable host readings, is frozen here by an amendment (§13) before the first measured play.
 
 ## 1. What it counts
 
@@ -41,8 +42,11 @@ ran, and no new evidence about the models.
 4. **The window's cases** (§7). Cases 1, 2 and 5 to 14 need nobody at the Mac. Cases 3 and 4 need the owner there,
    for about fifteen minutes, and case 4 is the last of that sitting.
 
-Cases 12 and 13 (the measured sets) run with nothing else on the Mac, before or after the other cases, never
-between them.
+**The measured sets (case 13) are the exception to "one final deploy", by the plan's own order** (item 13: measure,
+then decide, then build). The before set is taken ahead of the window, as soon as the per-stage instrument is on
+main and on the worker and §13's amendment is in, with none of the throughput change on the worker. The after set
+runs in the window. Each runs with nothing else on the Mac, never between two other cases. What makes them a
+matched pair, and what happens when they aren't, is case 13's.
 
 **A deploy that a rehearsal's finding changes is superseded** (the verification sets' README). The fix merges, the
 deploy is rebuilt from main, the opening checks are read again, and the rehearsal runs again. No counted case runs on
@@ -69,8 +73,10 @@ it closes at the declared end.
    - tools `41:8f661f40cfd0081134c8ad488a48058f7a56fa5afe05d35c2804a10dc2502899`;
    - the qualification record `edcbf9c10a7257c318099fac246866de1950ebaf21ec1dfaa0d560d9f515953d`, schema
      `squadops.studio-qualification/3`;
-   - the qualification scenario `qualify-screen-visible.json`, digest `sha256:4c660da5…88bf93`, kept on the Mac
-     beside the place. Its content is the product's and is not reproduced here.
+   - the qualification scenario `qualify-screen-visible.json`, kept on the Mac beside the place. Its frozen
+     digest, the canonical text under `roblox-studio/1` that the qualification record carries, is
+     `sha256:4c660da5…88bf93`. The file's own bytes hash to `sha256:0d554807…cd9df`, so a hash of the file is not
+     expected to match the frozen one. Its content is the product's and is not reproduced here.
 
    **The tool list is read again after a fresh launch of Studio, before the first play.** It moved at three launches
    in a row at one Studio version (2026-11-20 to 2026-11-26), with nothing installed. If the digest differs from the
@@ -78,9 +84,14 @@ it closes at the declared end.
    (§13), and R5.31's reading of which tools changed is recorded with it. A play on a Studio that differs from its
    proof is refused by the worker (R2.4, R5.29), so this check saves a refusal; it is not what prevents the play.
 5. **The Mac is quiet** (item 13). The MacBook lane records the host's readings at the window's start and end, and
-   at each measured set's start and end. Through the window the Mac runs no tests, no Docker and no model. Two
-   things keep running there: the MacBook lane's session, and the worker. The worker's checkout isn't pulled or
-   switched until the window closes.
+   at each measured set's start and end, with `scripts/dev/host_quiet_reading.py` (to be built, §4). Through the
+   window the Mac runs no tests, no containers and no model:
+   - the Mac's own SquadOps stack is stopped by the MacBook lane before the window (`docker compose stop`, from
+     its main checkout, the compose file untouched) and started again after the close;
+   - `ollama ps` reads empty.
+
+   Two things keep running there: the MacBook lane's session, and the worker, as its installed service. The
+   worker's checkout isn't pulled or switched until the window closes, but for the one switch case 13 allows.
 6. **The front guard is not running.** With it running, case 2 would show the guard and not the runner, and case 3
    couldn't pass.
 7. **The dedicated settings are written, by the owner.** The MacBook lane confirms that the four settings are
@@ -121,10 +132,14 @@ B-2, the session clock. No goal, item or constraint is added for this window.
 missing one stops the window at check 2:
 - a request profile for case 9: the 2.8.1 row-8 diagnostic's (`campaign-increment-source-client-stops`, the fault
   `luau_client_throws_at_start`) with `max_correction_attempts` at the standard profile's 3 in place of 0;
-- a fault and a request profile for case 10: a client script that never finishes starting and raises nothing, so the
-  setup is never met and no script error is named;
+- a fault and a request profile for case 10: a client script that waits in a loop where the engine loads it, and
+  raises and logs nothing, so the setup is never met and no script error is named;
 - the Studio provider's half of R5.32 (it names script errors and its environment), without which no Studio play
-  can be attributed and case 9 can't pass.
+  can be attributed and case 9 can't pass;
+- item 13's per-stage instrument and its isolation tests (#3250), and `scripts/dev/host_quiet_reading.py`, without
+  which cases 12 and 13 can't be read.
+
+The first two are built under #3284. The last two are the MacBook lane's.
 
 ## 5. The bar for a ruling
 
@@ -180,8 +195,11 @@ the play session, the environment and who served it (`ran_with`; R5.29, R5.32, R
 - **Recovery:** the Campaign's own retries and repairs. A limit's pause waits for the owner.
 
 **Case 2. The front lost and recovered.**
-- **Done:** during case 1's Campaign, or one like it, another app is in front when a play that uses Studio's input
-  is claimed. Nobody touches the Mac.
+- **Done:** during case 1's Campaign, or one like it, the MacBook lane puts another app in front
+  (`open -a Finder`) while no operation is claimed, records the time, and touches nothing else. A fresh launch of
+  Studio brings it to the front, so after any reset the case doesn't happen by itself. The command moves no
+  keyboard or pointer input, so the idle reading is still a true one. The next play that uses Studio's input is
+  then claimed with that app in front.
 - **Expected:** the worker reads the six conditions, brings Studio forward once, and the play runs.
 - **Passes when** the play's result reads `front.activated` `true` and `front.was` `other`, with `front.idle_s` at
   or over the threshold, and its assertions executed.
@@ -191,25 +209,35 @@ the play session, the environment and who served it (`ran_with`; R5.29, R5.32, R
 - **Attribution:** a refusal here is the worker's, by its `front.refused` reason.
 
 **Case 3. Human input prevents an activation** (the owner present).
-- **Done:** with another app in front and a play that uses input about to be claimed, the owner uses the keyboard
-  or mouse.
+- **Done:** the owner can't know the moment a play is claimed, so the input covers a span. What the owner is
+  asked: "With another app in front, sit at the Mac and keep using it, typing or moving the pointer every few
+  seconds, from when the MacBook lane says a play is queued until it says the play was refused, then stop."
 - **Expected:** no activation. The play is refused, and the increment is retried later.
 - **Passes when** the result reads `not_executed`, `tool_unready`, `front.activated` `false`, and `front.refused`
   one of `idle_below_threshold`, `input_before_activation` or `input_during_activation`; Studio was not brought
-  forward, or, for `input_during_activation`, nothing was played and no input was sent.
+  forward, or, for `input_during_activation`, nothing was played and no input was sent. The third reason can't be
+  produced on purpose; it passes if it is what happened.
 - **Fails when** Studio takes the front while the owner is using the Mac and a play proceeds.
 - **Evidence:** the result, and the owner's own account of what they saw, recorded in their words.
 
 **Case 4. A locked screen is refused** (the owner present; the last of the sitting).
-- **Done:** the owner locks the screen, and a play that uses input is claimed.
+- **Done:** a play that uses input is claimed with the screen locked. What the owner is asked: "With another app
+  in front, lock the screen (Control-Command-Q) and step away. When the MacBook lane says the play was refused,
+  come back, check that the screen is still locked, and unlock it yourself."
 - **Expected:** a refusal. Nothing unlocks, dismisses or works around the lock.
 - **Passes when** the result reads `not_executed`, `tool_unready`, `front.refused` `locked`, and the screen is still
   locked when the owner returns.
-- **Fails when** anything is played, or the lock state changed without the owner.
+- **Fails when** anything is played, or the lock state changed without the owner. Which app a locked screen reads
+  as in front hasn't been seen on this Mac. If Studio reads as in front, the play could proceed on a locked screen,
+  and this line is what catches it.
+- **Evidence:** the result, its `front.was`, the play log, and the owner's account of the screen on their return.
 - **Recovery:** the owner unlocks; the increment is retried by the Campaign.
 
 **Case 5. A Studio restart and requalification.**
-- **Done:** Studio is quit and reopened on the place by the MacBook lane's reset, between plays of a Campaign.
+- **Done:** between plays of a Campaign, while no operation is claimed, the MacBook lane stops the worker's
+  service and starts it. The worker's own start-up reset quits Studio, restores the place and reopens it, and its
+  first claim holds the running Studio to its proof. A reset run by hand beside a serving worker would race the
+  worker's claims, and is not what is done.
 - **Expected:** the tool list is read after the launch. If it is the pin's, plays resume. If it moved, every play is
   refused as not proved until a requalification passes, and then plays resume on the new record.
 - **Passes when** no play is credited on a Studio that differs from its proof, each refusal reads `tool_unready`
@@ -219,18 +247,24 @@ the play session, the environment and who served it (`ran_with`; R5.29, R5.32, R
 - **Evidence:** the qualification records, R5.31's `tools_changed`, and the results either side of the restart.
 
 **Case 6. A worker restart and lease recovery.**
-- **Done:** the worker is stopped while it holds an operation's lease, and started again.
+- **Done:** the worker's service is stopped while it holds an operation's lease, and started again. This is what
+  sets it apart from case 5, where nothing is claimed.
 - **Expected:** the lease runs out and the operation is requeued or reads `interrupted` on its last attempt. The
   restarted worker reconciles before it claims, and the operation runs once.
-- **Passes when** exactly one accepted result exists for the operation, a late result from the stopped worker is
-  refused by its fence, and the increment's outcome is the one a run without the restart gives.
+- **Passes when** exactly one accepted result exists for the operation, and the increment's outcome is the one a
+  run without the restart gives. A stopped service sends no late result; if one arrives, it is refused by its
+  fence.
 - **Fails when** two results are accepted, or the abandoned attempt changes an outcome.
-- **Evidence:** the operation's attempts and refusals, and the worker's sessions.
+- **Evidence:** the operation's attempts and refusals, the worker's sessions, and the restarted worker's log line
+  for its start-up reset, which is where "reconciles before it claims" is read.
 
 **Case 7. The QA agent's capability missing** (a deliberately misconfigured diagnostic, #3235).
-- **Done:** the QA agent's container is restarted with its remote-execution provider set to `none`, by an
-  environment override for that one container, with the runtime's left bound. A Campaign is started. The compose
-  file is not changed, and the override is removed after.
+- **Done:** the QA agent's container is recreated by compose's own `up` for that one service, with the provider
+  set to `none` in that command's shell, which is the shape #3235 was found in. The runtime's stays bound, and the
+  compose file and `.env` are unchanged. A Campaign is started. After, the container is recreated the same way
+  without the variable, and the agent's report is read to bind `runtime_api` again before any other case runs.
+  A squad profile can't show this: every agent container takes the provider from the one `.env`, so no agent on
+  the box reports a different one until a container is recreated apart.
 - **Expected:** the cycle is refused at creation, naming the agent that can't ask for a play.
 - **Passes when** nothing is queued or played, the refusal names the QA agent and what it binds, no cycle is
   created, and the Campaign's control log records the refused launch as its own handling of a launch it can't
@@ -263,7 +297,10 @@ the play session, the environment and who served it (`ran_with`; R5.29, R5.32, R
 - **Labelled apart:** the fault is injected, so the outcome is no evidence about the models.
 
 **Case 10. An ambiguous or environmental setup failure, not corrected** (a diagnostic).
-- **Done:** a Campaign under case 10's profile: the candidate's client never finishes starting and raises nothing.
+- **Done:** a Campaign under case 10's profile: the candidate's client waits in a loop where the engine loads
+  it, and raises and logs nothing. A stall inside `WaitForChild` was not chosen: Roblox logs an infinite-yield
+  warning for it, with a stack. The Studio half of R5.32 reads a warning as no script error, and its amendment says
+  so; the fault doesn't lean on that.
 - **Expected:** the candidate's play reads `setup_failed`; the attribution is kept and reads condition 3 not
   holding (no script error named); no correction is dispatched; the cycle ends `blocked_unverified`.
 - **Passes when** `setup_attribution.json` reads `attributed` `false`, `repair` `not_dispatched`, and the run made
@@ -281,12 +318,29 @@ the play session, the environment and who served it (`ran_with`; R5.29, R5.32, R
 - **Fails when** the run fails on an exhausted correction budget, or row 8 isn't reached.
 
 **Case 12. Isolation across plays** (item 13). **Case 13. The matched throughput measurement, before and after.**
-- **Frozen before the first measured play, by amendment (§13):** the matched set's scenario files by name and
-  digest, the number of plays of each, the per-stage readings by field name, the host readings and the command
-  that takes them, and each isolation test with what it reads.
-- **Fixed now:** both sets run on one Studio qualification, the pin of §3 or its successor by check 4, and on one
-  worker. The before and after sets are matched only when the host's readings are comparable, and the record shows
-  them side by side. Claim-to-completion and delivery are read on the Spark's runtime, with the provider on.
+- **The matched set:** one scenario, `qualify-screen-visible.json`, at the frozen digest of §3's check 4, played
+  on the pinned baseline, **20 plays in each set**. With 20, the p95 is the 19th value; with fewer it is the
+  maximum. It uses an input action and reads two client assertions, and took 98 to 100 s a play on 2026-11-26.
+  - **Why one scenario:** it is the only frozen scenario whose tree is the baseline itself. Every other is an
+    increment's, frozen against a candidate tree that the baseline isn't.
+  - **Beside it, uncompared:** each stage's time for every play of case 1, which are plays of real increments.
+- **The before set** is taken ahead of the window (§2): the instrument on the worker, none of the throughput change.
+  It is also the plan's first step, the measurement that decides whether anything is built.
+- **The after set** runs in the window, on the final deploy.
+- **A matched pair** is two sets on one qualification record, by its digest, with comparable host readings, shown
+  side by side. If either differs when the after set is due, the before set is taken again in the window's
+  sitting, on the worker's checkout at the first before set's commit. That is the one switch of the worker's
+  checkout the window allows, made by the MacBook lane and recorded with both commits. If the worker at that commit
+  can't serve the final deploy, the pair is unmatched, and case 13 is recorded as unsuccessful, with why.
+- **Read where:** claim-to-completion and delivery on the Spark's runtime, with the provider on. Each stage's
+  time from the worker's own evidence item for the play, never from `ran_with`.
+- **The host readings,** one JSON document from `scripts/dev/host_quiet_reading.py` at each set's start and end:
+  the load average; free, active, wired and compressed memory and the free percentage; the models loaded; whether
+  Docker answers and how many containers run; the memory and CPU of Studio and of the worker; and every other
+  process as a count and a total, never by name, since the record goes on a public Release.
+- **Frozen by amendment (§13) before the first measured play,** because they don't exist yet: the instrument's
+  field names, once #3250 is built; the bar for "comparable", once a first host reading exists to set it from;
+  and each isolation test with what it reads.
 - **Case 13 passes when** the median claim-to-completion time on the matched set is at least 20% lower after than
   before, scenario outcomes are unchanged play for play, the isolation tests pass, and no play is a new false
   success or false failure.
@@ -397,5 +451,5 @@ Non-execution is counted beside failure in every readout.
 ## 13. Amendments
 
 None yet. Each is added here before the run it changes, with its date, what changed, the evidence and who ruled.
-Expected before the first measured play: the matched set and the readings of cases 12 and 13; and, if check 4
-finds the tool list moved, the new pin.
+Expected before the first measured play: the instrument's field names, the bar for comparable host readings and
+the isolation tests of cases 12 and 13; and, if check 4 finds the tool list moved, the new pin.
