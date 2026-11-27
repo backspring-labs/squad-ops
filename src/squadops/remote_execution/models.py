@@ -41,6 +41,17 @@ REQUEST_TREE_LIMIT_BYTES = 4 * 1024 * 1024
 EVIDENCE_ITEM_LIMIT_BYTES = 256 * 1024
 
 
+#: #3200: who served a result, as the registry knows it: the worker whose session returned it.
+#: The registry writes it on every result it accepts, over anything a worker put there, so two
+#: readings can be told to share a worker without believing either one's own word for it.
+RAN_WITH_SERVED_BY = "served_by"
+#: #3200: the environment a play ran in, as its provider names it: one value that two plays
+#: share only when everything the provider holds fixed between them is the same (for an editor
+#: on a worker: the pinned place, the editor's qualified identity, and its harness). A provider
+#: that can't say leaves it out, and no two of its readings are then read as comparable.
+RAN_WITH_ENVIRONMENT = "environment"
+
+
 class AssertionOutcome(StrEnum):
     """One assertion's result (R3.7)."""
 
@@ -156,6 +167,24 @@ class EvidenceItem:
 
 
 @dataclass(frozen=True)
+class ScriptError:
+    """An error the provider read in its tool's own log, raised in a file of the request's
+    staged tree (#3200, R5.32).
+
+    A provider's fact, never an attribution: it says which staged file raised, where, and what
+    the tool said. The provider maps its tool's name for the script back to the staged path,
+    and reports nothing for an error it can't place in the tree. Core never reads a console's
+    prose for one."""
+
+    #: The staged file that raised it: a key of the request's ``source_files``.
+    path: str
+    #: The line the tool named, or ``0`` when it named none.
+    line: int
+    #: What the tool said, as it said it.
+    message: str
+
+
+@dataclass(frozen=True)
 class RemoteOperationResult:
     """What the provider returned for one request."""
 
@@ -185,6 +214,11 @@ class RemoteOperationResult:
     #: building the candidate again changes nothing. A fact about the worker, never the work,
     #: which the Campaign reads as it reads ``unavailable``.
     tool_unready: bool = False
+    #: #3200: the errors the provider read in its tool's log as it stood when the scenario
+    #: ended, each raised in a staged file. A scenario stops at its first unmet setup wait, so on
+    #: a play whose setup failed these were all logged before that wait ran out. Set only by a
+    #: provider, and only on ``completed``: a play that didn't run read no log.
+    script_errors: tuple[ScriptError, ...] = ()
 
 
 def request_size_defect(request: RemoteOperationRequest) -> str | None:
@@ -230,6 +264,13 @@ def result_defects(request: RemoteOperationRequest, result: RemoteOperationResul
         defects.append(f"the operation is {result.status.value} and gives no reason")
     if result.status is not OperationStatus.COMPLETED and result.records:
         defects.append(f"the operation is {result.status.value} and still returned records")
+    if result.status is not OperationStatus.COMPLETED and result.script_errors:
+        defects.append(f"the operation is {result.status.value} and still named script errors")
+    for error in result.script_errors:
+        if error.path not in request.source_files:
+            defects.append(
+                f"a script error in {error.path!r}, which the request's staged tree doesn't hold"
+            )
     declared = set(request.scenario.assertions)
     if request.scenario.named_assertion not in declared:
         defects.append(
@@ -259,6 +300,11 @@ def outcomes_by_assertion(
         or AssertionRecord(assertion_id, AssertionOutcome.MISSING)
         for assertion_id in request.scenario.assertions
     }
+
+
+def script_error_document(error: ScriptError) -> dict[str, object]:
+    """One script error as a reading's document and the wire carry it."""
+    return {"path": error.path, "line": error.line, "message": error.message}
 
 
 def reading_unavailable(reading: Mapping | None) -> bool:
@@ -322,6 +368,9 @@ def records_document(
         "tool_unready": result.tool_unready,
         "provider_version": result.provider_version,
         "ran_with": dict(result.ran_with),
+        # #3200: written on every reading, so "the provider named none" is read, never inferred
+        # from a missing key. A reading kept before the key reads as naming none.
+        "script_errors": [script_error_document(error) for error in result.script_errors],
         "assertions": [
             {
                 "assertion_id": record.assertion_id,

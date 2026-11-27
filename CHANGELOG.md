@@ -103,6 +103,18 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     and a return can't disagree. A cancel before the proof names no Studio, and one before the place was read
     names no place.
   - A runner that can't say is still answered, with a reason that says so.
+- **A candidate's own setup failure gets one correction in the run** (#3200, the core; SIP-0117 R5.32; the 2.9
+  plan's item 7): a candidate whose client raised as it started read `setup_failed` on every play, which is
+  not executed, so the run made no correction and ended blocked on a fault its first play's log had named.
+  - A play's result now names the script errors its provider read (`script_errors`), the registry writes who
+    served each result (`ran_with["served_by"]`), and a provider names a play's environment.
+  - Before such a play is accepted as unverified, six conditions are read from the cycle's records
+    (`remote_execution/setup_attribution.py`). All six holding spends one correction, with the error in its
+    evidence. Any other reading keeps the routing it had, and the reading is kept beside the play's evidence
+    either way.
+  - No unexecuted assertion becomes an executed failure, and with in-run correction off nothing is refused,
+    so the Campaign's repair is still reached.
+  - Still to come under #3200: the Studio provider's half (the MacBook lane), and the played diagnostic.
 - **An accepted QA hand-off reads accepted everywhere** (#3000; SIP-0077 §24a; the 2.9 plan's item 5): a
   product's `qa.test` whose suite the qa image leaves to the product's own runner replied as a failed task, and
   three signals were set from that reply before the runner was asked: the Prefect task run read `Failed`, the

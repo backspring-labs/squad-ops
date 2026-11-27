@@ -1,0 +1,23 @@
+checks:
+  - id: "3200-script-errors-and-the-screen"
+    what: the runtime carries a play's script errors across the wire, stamps who served a result, and its correction gate admits a setup failure attributed to the candidate (SIP-0117 R5.32)
+    container: squadops-runtime-api
+    code: |
+      from squadops.execution.setup_failure_correction import attributed_setup_failure
+      from squadops.remote_execution.models import RAN_WITH_SERVED_BY, OperationStatus, RemoteOperationResult, ScriptError
+      from squadops.remote_execution.wire import result_from_wire, result_to_wire
+      r = RemoteOperationResult(OperationStatus.COMPLETED, script_errors=(ScriptError("src/a.luau", 3, "m"),), dispatch_id="d")
+      back = result_from_wire(result_to_wire(r)).script_errors[0]
+      print(back.path, back.line, RAN_WITH_SERVED_BY, attributed_setup_failure({"setup_attribution": {"attributed": True}}), attributed_setup_failure({"setup_attribution": {"attributed": False}}))
+    expect: "src/a.luau 3 served_by True False"
+  - id: "3200-agent-reading-names-script-errors"
+    what: the qa agent's reading of a play names the script errors its provider reported, and names none as an empty list (SIP-0117 R5.32)
+    container: squadops-eve
+    code: |
+      from squadops.remote_execution.models import OperationStatus, ReadingSide, RemoteOperationRequest, RemoteOperationResult, Scenario, ScriptError, records_document
+      s = Scenario("s1", "sha256:d", ("a1",), "a1", "doc")
+      q = RemoteOperationRequest("c", "m", "p", "o", "worker", "rev", {"src/a.luau": "x"}, s, "t", "d")
+      named = RemoteOperationResult(OperationStatus.COMPLETED, script_errors=(ScriptError("src/a.luau", 3, "m"),), dispatch_id="d")
+      none = RemoteOperationResult(OperationStatus.COMPLETED, dispatch_id="d")
+      print(records_document(q, named, ReadingSide.CANDIDATE, not_staged=())["script_errors"], records_document(q, none, ReadingSide.CANDIDATE, not_staged=())["script_errors"])
+    expect: "[{'path': 'src/a.luau', 'line': 3, 'message': 'm'}] []"

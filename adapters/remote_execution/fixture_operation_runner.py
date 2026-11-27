@@ -15,6 +15,13 @@ accepted result without an engine, and its results are real readings of the requ
 - **The world is still.** Actions are recorded in the evidence and change nothing. A setup
   ``wait_until`` whose expectation isn't met means the scenario's world wasn't established, so
   every assertion reads ``setup_failed``.
+- **A staged ``.fixture/script_errors.json``** is the fixture's stand-in for a tool's log
+  (SIP-0117 R5.32, #3200): a list of ``{"path", "line", "message"}``. Each one raised in a
+  staged file is reported on the result as a script error, as a provider that read its tool's
+  log would report it. One that names no staged file is left out, as a real provider leaves out
+  an error it can't place in the tree. A file that isn't such a list is ``not_executed``.
+- **Every play names its environment** (``ran_with["environment"]``): the fixture's version and
+  reader, which is all a fixture play has that two plays could differ in.
 - **A staged ``.fixture/hold_seconds``** makes the operation wait that many seconds first, so a
   rehearsal can watch a lease renew and a cancel arrive. A value that isn't a number of seconds
   is ``not_executed``, with the value.
@@ -30,12 +37,14 @@ from typing import Any
 
 from squadops.ports.remote_execution import OperationRunnerPort
 from squadops.remote_execution.models import (
+    RAN_WITH_ENVIRONMENT,
     AssertionOutcome,
     AssertionRecord,
     EvidenceItem,
     OperationStatus,
     RemoteOperationRequest,
     RemoteOperationResult,
+    ScriptError,
 )
 from squadops.remote_execution.scenario import (
     ABSENT,
@@ -56,6 +65,7 @@ OPERATION = "declared_scenario"
 VERSION = "2"
 HOLD_PATH = ".fixture/hold_seconds"
 WORLD_PATH = ".fixture/world.json"
+SCRIPT_ERRORS_PATH = ".fixture/script_errors.json"
 RUN_LOG_NAME = "declared_scenario_run.json"
 
 #: The fixture's reader. A provider ships its vocabulary as data beside its code (R4.6).
@@ -116,12 +126,19 @@ class FixtureOperationRunner(OperationRunnerPort):
                 f"the fixture provider runs {PROVIDER}/{OPERATION}, and was asked for "
                 f"{request.provider}/{request.operation}",
             )
-        self._established = {PROVIDER: VERSION, "reader": VOCABULARY.reader}
+        # What its result's ``ran_with`` carries, a cancelled play's and a completed one's alike
+        # (#3236): its version, its reader, and the environment it names (#3200, R5.32).
+        self._established = {
+            PROVIDER: VERSION,
+            "reader": VOCABULARY.reader,
+            RAN_WITH_ENVIRONMENT: f"{PROVIDER}@{VERSION}/{VOCABULARY.reader}",
+        }
         declaration, defects = handed_scenario_defects(request.scenario, VOCABULARY)
         if declaration is None:
             return self._not_executed(request, "the scenario can't be run: " + "; ".join(defects))
         try:
             world = _world(request.source_files)
+            script_errors = _script_errors(request.source_files)
         except ValueError as unreadable:
             return self._not_executed(request, str(unreadable))
         if HOLD_PATH in request.source_files:
@@ -143,6 +160,7 @@ class FixtureOperationRunner(OperationRunnerPort):
             provider_version=f"{PROVIDER}@{VERSION}",
             ran_with=dict(self._established),
             dispatch_id=request.dispatch_id,
+            script_errors=script_errors,
         )
 
     def _not_executed(self, request: RemoteOperationRequest, reason: str) -> RemoteOperationResult:
@@ -173,6 +191,33 @@ def _world(files: Mapping[str, str]) -> dict[str, dict[str, Mapping[str, Any]]]:
         ):
             raise ValueError(f"{WORLD_PATH}: {context} maps each instance path to an object")
     return world
+
+
+def _script_errors(files: Mapping[str, str]) -> tuple[ScriptError, ...]:
+    """The staged stand-in for a tool's log, read strictly. Only an error raised in a staged
+    file is reported."""
+    if SCRIPT_ERRORS_PATH not in files:
+        return ()
+    try:
+        listed = json.loads(files[SCRIPT_ERRORS_PATH])
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{SCRIPT_ERRORS_PATH} isn't JSON: {e}") from e
+    if not isinstance(listed, list) or not all(
+        isinstance(e, dict)
+        and set(e) == {"path", "line", "message"}
+        and isinstance(e["path"], str)
+        and isinstance(e["line"], int)
+        and not isinstance(e["line"], bool)
+        and e["line"] >= 0
+        and isinstance(e["message"], str)
+        for e in listed
+    ):
+        raise ValueError(
+            f"{SCRIPT_ERRORS_PATH} is a list of objects with a path, a line number and a message"
+        )
+    return tuple(
+        ScriptError(e["path"], e["line"], e["message"]) for e in listed if e["path"] in files
+    )
 
 
 def _observe(observation: Observation, world: Mapping[str, Mapping[str, Any]]) -> Any:
