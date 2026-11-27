@@ -667,15 +667,16 @@ pointless."
 
 **The evidence.**
 - **The bar was set from the wrong reading.** 13a took 2.0 from a reading with Studio and the worker not
-  running (load 1.17). A set can only start with Studio open, and Studio idling used between 44 and 51% of a core
-  in every reading taken on 2026-11-27.
+  running (load 1.17 at 01:21 ET; PR #3286, comment 7211459597). A set can only start with Studio open, and
+  Studio idling used between 43 and 56% of a core in each of the seventeen host readings kept on 2026-11-27,
+  and between 44 and 51% in all but two.
 - **With Studio idling the Mac sits between 2.0 and 2.5.** Before the after set's rehearsal, eleven readings
   three minutes apart read 2.41, 2.46, 2.14, 2.29, 2.16, 2.05, 2.06, 2.46, 2.78, 2.36 and 1.92. The set waited
   31 minutes for the last one. Ten of the eleven are under 2.5, so under the new bar it would have started on
   the first.
 - **The start's load doesn't move the plays.** Both sets ended above 2.0 by their own doing (2.26 and 2.52).
   The plays of one set spread over about 2.5 s, and the change measured is 22 s. The rehearsal's set started at
-  1.92, ended at 2.52, and every play ran between 74.9 and 77.3 s.
+  1.92, ended at 2.52, and every play ran between 74.9 and 77.3 s by the runtime's record of the set.
 - **Both sets are held to one bar.** The before set's start reading was 1.87, which meets 2.0 and 2.5 alike.
 
 **Why it is an amendment and not a quiet edit.** The bar was loosened after a set had been played under it and
@@ -683,6 +684,6 @@ after a rehearsal had shown the result. That is the order in which a test gets b
 owner's, it is written before the counted after set, and the reason is that the bar was miscalibrated, not that
 a set missed it. No set has missed it.
 
-**What it gives up.** A counted after set may now start on a Mac up to half a load point busier than the
-before set's start. The record shows all four readings side by side, so a reader can see how far apart they
+**What it gives up.** A counted after set may now start on a Mac up to 0.6 of a load point busier than the
+before set's start (1.87). The record shows all four readings side by side, so a reader can see how far apart they
 were.
