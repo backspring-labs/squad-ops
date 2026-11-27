@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -104,8 +105,23 @@ def test_a_reading_that_cant_be_taken_says_so_and_is_never_left_out(failing, key
 def test_docker_that_doesnt_answer_is_read_as_not_answering():
     assert quiet.reading(_run({"docker"}), NOW)["docker"] == {
         "answers": False,
-        "why": "docker isn't there",
+        "why": "OSError: docker isn't there",
     }
+
+
+def test_a_docker_that_hangs_is_read_as_not_answering_and_the_document_is_still_printed():
+    """Bug caught: a hung ``docker ps`` raising out of the reading, so no document at all."""
+
+    def run(command):
+        if command[0] == "docker":
+            raise subprocess.TimeoutExpired(command, 30)
+        return _run()(command)
+
+    document = quiet.reading(run, NOW)
+
+    assert document["docker"]["answers"] is False
+    assert document["docker"]["why"].startswith("TimeoutExpired: Command '['docker', 'ps', '-q']'")
+    assert document["load_average"] == [2.46, 4.68, 4.83]
 
 
 @pytest.mark.parametrize(

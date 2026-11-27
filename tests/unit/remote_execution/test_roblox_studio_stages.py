@@ -87,7 +87,7 @@ async def test_a_played_scenario_carries_each_stage_it_ran_and_each_wait(tmp_pat
     assert list(document["stages"]) == ran
     assert all(seconds >= 0 for seconds in document["stages"].values())
     assert len(document["waits"]) == 1  # the declaration's one wait_until
-    assert document["stopped_at"] is None
+    assert (document["stopped_at"], document["transactions"]) == (None, 1)
 
 
 async def test_a_play_begun_again_after_a_drift_times_the_reset(tmp_path):
@@ -96,4 +96,6 @@ async def test_a_play_begun_again_after_a_drift_times_the_reset(tmp_path):
     result = await _runner(world, _Mac(world=world)).run(_request())
 
     assert result.status is OperationStatus.COMPLETED, result.reason
-    assert "reset_s" in _stages(result)["stages"]
+    document = _stages(result)
+    # Two attempts at the transaction, each stage summed over them, and the reset between.
+    assert (document["transactions"], "reset_s" in document["stages"]) == (2, True)

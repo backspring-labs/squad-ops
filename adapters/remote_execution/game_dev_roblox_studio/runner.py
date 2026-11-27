@@ -375,6 +375,7 @@ class RobloxStudioRunner(OperationRunnerPort):
     ) -> RemoteOperationResult:
         """One attempt at the transaction. Raises :class:`_Drifted`, before anything is
         written, when the place isn't its pinned baseline. Each stage is timed (#3250)."""
+        stages.transactions += 1
         self._established = dict(self._run_facts)
         uses_input = any(a.action in play.STUDIO_INPUT_ACTIONS for a in (*declaration.setup,
                                                                           *declaration.steps))  # fmt: skip

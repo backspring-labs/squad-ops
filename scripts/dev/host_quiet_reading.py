@@ -125,8 +125,9 @@ def processes(ps: str) -> dict[str, dict[str, float | int]]:
 def docker(run: Run) -> dict[str, Any]:
     try:
         running = run(["docker", "ps", "-q"])
-    except (OSError, FileNotFoundError) as e:
-        return {"answers": False, "why": str(e)[:200]}
+    except (OSError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+        # A daemon that hangs answers nothing too: the document is still printed, and says so.
+        return {"answers": False, "why": f"{type(e).__name__}: {e}"[:200]}
     return {"answers": True, "containers_running": len(running.split())}
 
 

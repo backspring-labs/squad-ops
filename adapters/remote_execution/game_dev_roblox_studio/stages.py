@@ -24,7 +24,9 @@ its own stages, and the result carries them as an evidence item, ``stages.json``
 - ``reset_s``: the reset, when the run began with one (R5.17's drift).
 
 A stage that didn't run is absent. One that raised is timed to where it raised, and named in
-``stopped_at``. Claim-to-completion and delivery are read from the runtime's records of the
+``stopped_at``. **A stage's time is its sum over the play's attempts at the transaction:** R5.17
+begins the transaction again once after a drifted place's reset, and ``transactions`` says how
+many attempts there were, so a play begun again is never read as one slow attempt. Claim-to-completion and delivery are read from the runtime's records of the
 operation, not here: the result is built before it is delivered.
 
 Seconds are wall-clock (``time.monotonic``), rounded to the millisecond.
@@ -68,6 +70,8 @@ class PlayStages:
     seconds: dict[str, float] = field(default_factory=dict)
     waits: list[float] = field(default_factory=list)
     stopped_at: str | None = None
+    #: How many attempts at the transaction the play made: 1, or 2 after a drift's reset.
+    transactions: int = 0
 
     @contextmanager
     def stage(self, name: str) -> Iterator[None]:
@@ -90,6 +94,7 @@ class PlayStages:
         return json.dumps(
             {
                 "schema": SCHEMA,
+                "transactions": self.transactions,
                 "stages": {name: self.seconds[name] for name in STAGES if name in self.seconds},
                 "waits": self.waits,
                 "stopped_at": self.stopped_at,
