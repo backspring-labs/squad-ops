@@ -690,7 +690,7 @@ were.
 
 ### 13e. Rehearsal 1's reading, and how cases 2 to 6, 8 and 14 are run in the window (2026-11-27)
 
-**What changed.** Six things, each written before the window opens. No case's pass or fail condition changes.
+**What changed.** Seven things, each written before the window opens. No case's pass or fail condition changes.
 
 1. **The exit rule is read as met by rehearsal 1 for the seven cases it ran, and case 2 is rehearsed at the
    window's opening.** §6 lists eight cases for a rehearsal. Rehearsal 1 ran seven of them (1, 5, 6, 8, 9, 10 and
@@ -723,11 +723,26 @@ were.
    rehearsal, on the final deploy. It did, and the deploy has not been superseded since. If the deploy is
    superseded before the cut, the pair is played again.
 
+7. **A proposal whose scenario uses `move_to` is returned at the gate** as `criteria_not_checkable`, by §5's
+   bar. The action can't arrive as the reader stands (#3298): `play.py` waits for arrival on
+   `@player.Character.HumanoidRootPart`, and the reader's `resolve` walks a path by child lookup, where a
+   player's character is a property and not a child. So the step reads `setup_failed` on the baseline and on
+   any candidate, and an assertion behind it never executes. The MacBook lane read this by hand on the pin
+   after the rehearsal, with the worker stopped and nothing claimed: one play that read the path as `absent`
+   with the character spawned, and one that failed its `move_to` after 25 s. No rehearsed scenario uses the
+   action, and no ruling already made changes. The reader is not changed before the cut: a fix moves
+   `harness.observe`'s digest, and with it the environment every certified play names. It goes to the first
+   patch after the cut, with its own requalification, and §11 carries it until then.
+
 **Who ruled.**
-- Points 1 to 4 and 6: the Spark lane, which wrote this registration and supervises the Campaigns (D13), under
+- Points 1 to 4, 6 and 7: the Spark lane, which wrote this registration and supervises the Campaigns (D13), under
   the owner's grant of 2026-11-26. Case 2's ordering was put to the owner on 2026-11-27 in the Spark lane's plan
-  for the window; the owner changed that plan's hours and nothing else in it.
-- Point 5: the owner, on 2026-11-27, choosing the plain process when asked how the worker runs in the window.
+  for the window. The owner questioned that plan's hours and did not speak to the ordering, so it is the
+  Spark lane's reading of the exit rule and not the owner's ruling. The plan asks for "a full pass", and a
+  missed done-when's disposition is the owner's (D16), so the owner may overrule it before the window opens.
+- Point 5: the owner, on 2026-11-27. The Spark lane recommended the plain process when it laid out how the
+  worker runs in the window, and the owner answered: "Im good with your recommendations on all other
+  decisions."
 - The MacBook lane acted out cases 5 and 6 in the rehearsal and read each ruling at its gate.
 
 **Rehearsal 1, uncounted,** on the final deploy `dep_8ce04da70a65` (main at `f35c714b`), 2026-11-27, with nobody
@@ -778,6 +793,9 @@ was made.
   the counts of returned proposals are read with that said beside them. The owner ruled on 2026-11-27 that the
   lesson stays through 2.9 and is corrected in 2.10. What the cases certify, the worker's unattended execution
   and the runtime's handling of it, doesn't rest on who shaped the proposal.
+- **`move_to`, in the window and in the release.** No scenario that walks the character to a point is
+  certified, because none can pass (point 7, #3298). The held key (`hold_key`) is the only movement the
+  window's plays use.
 - **The deploy against main.** Four merges followed the final deploy: two reading scripts and their tests
   (`host_quiet_reading.py`, `measured_play_set.py`), and documents. None is loaded by the runtime or an agent,
   so the deploy is not superseded. The worker's checkout carries the first of them and the Spark's tool the
