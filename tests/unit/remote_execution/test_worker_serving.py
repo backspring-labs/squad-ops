@@ -22,6 +22,7 @@ from squadops.remote_execution.workers import (
 from tests.unit.remote_execution.registry_contract import (
     PLAY,
     Clock,
+    as_served,
     passing,
     queue,
     registration,
@@ -99,7 +100,7 @@ async def test_a_queued_operation_is_run_and_settled_with_the_tools_result(w):
         await serving.until(w.settled(queued.operation_id))
 
     operation = await w.stored(queued.operation_id)
-    assert operation.result == passing("dispatch-1")
+    assert operation.result == as_served(passing("dispatch-1"))
     assert await w.attempts() == [(1, "accepted")]
     assert w.api.renewals >= 150 // leasing.HEARTBEAT_SECONDS - 1
     assert await w.registry.refusals(queued.operation_id) == []
@@ -125,7 +126,7 @@ async def test_a_tool_that_answers_a_probe_late_while_it_runs_keeps_its_lease(w)
         await serving.until(w.settled(queued.operation_id))
 
     assert await w.attempts() == [(1, "accepted")]
-    assert (await w.stored(queued.operation_id)).result == passing("dispatch-1")
+    assert (await w.stored(queued.operation_id)).result == as_served(passing("dispatch-1"))
     assert w.runner.probes_while_running == 0
     assert w.runner.resets == 1  # the start's (#3046), and none for a claim that was kept
     ((_, health),) = await w.registry.sessions()
@@ -152,7 +153,7 @@ async def test_an_operation_that_ends_while_a_refused_renewal_is_out_submits_and
     assert w.runner.stopped_at == []
     assert w.runner.resets == 1  # the start's only
     assert len(w.runner.runs) == 2
-    assert (await w.stored(queued.operation_id)).result == passing("dispatch-1")
+    assert (await w.stored(queued.operation_id)).result == as_served(passing("dispatch-1"))
 
 
 async def test_a_cancel_stops_the_tool_resets_it_and_settles_the_operation_interrupted(w):
@@ -176,7 +177,12 @@ async def test_a_cancel_stops_the_tool_resets_it_and_settles_the_operation_inter
     assert operation.result.dispatch_id == "dispatch-1"
     # #3236: what the run had established, read after it was stopped and before the reset
     # (the harness's reset clears it, so a read after the reset would carry nothing).
-    assert dict(operation.result.ran_with) == {"scripted-editor": "7.2", "place": "p-1"}
+    # R5.32: who served it is the registry's word, added at acceptance to what the run named.
+    assert dict(operation.result.ran_with) == {
+        "scripted-editor": "7.2",
+        "place": "p-1",
+        "served_by": "macbook",
+    }
     assert len(w.runner.stopped_at) == 1
     assert w.runner.resets == 2  # at start (#3046), then after the cancel
     assert await w.attempts() == [(1, "accepted")]
@@ -207,7 +213,7 @@ async def test_a_lease_that_runs_out_unrenewed_stops_the_tool_and_the_next_attem
         await serving.until(w.settled(queued.operation_id))
 
     operation = await w.stored(queued.operation_id)
-    assert operation.result == passing("dispatch-1")
+    assert operation.result == as_served(passing("dispatch-1"))
     assert await w.attempts() == [(1, "expired"), (2, "accepted")]
     assert await w.registry.refusals(queued.operation_id) == []
     assert len(w.runner.runs) == 2
@@ -230,7 +236,8 @@ async def test_what_the_tool_raises_settles_the_operation_interrupted_with_it(w)
         "the tool raised while the operation ran: RuntimeError: the place file is locked"
     )
     assert result.records == ()
-    assert dict(result.ran_with) == {"scripted-editor": "7.2"}  # #3236, read before the reset
+    # #3236, read before the reset; the registry adds who served it (R5.32).
+    assert dict(result.ran_with) == {"scripted-editor": "7.2", "served_by": "macbook"}
     assert w.runner.resets == 2  # at start (#3046), then after the crash
 
 
@@ -252,7 +259,11 @@ async def test_a_tool_that_cant_say_what_it_ran_with_is_still_answered(w, ending
         await serving.until(w.settled(queued.operation_id))
 
     result = (await w.stored(queued.operation_id)).result
-    assert (result.status, dict(result.ran_with)) == (OperationStatus.INTERRUPTED, {})
+    # Nothing the run named; the registry's own word on who served it is still there (R5.32).
+    assert (result.status, dict(result.ran_with)) == (
+        OperationStatus.INTERRUPTED,
+        {"served_by": "macbook"},
+    )
     assert result.reason.endswith(
         "; what it ran with couldn't be read: OSError: the record is gone"
     )
@@ -293,7 +304,7 @@ async def test_a_tool_that_cant_be_reset_runs_nothing_until_it_can(w):
     )
     assert refused.dispatch_id == "dispatch-2"
     assert refused.tool_unready is True  # #3192: the worker's tool, never the request
-    assert (await w.stored(third.operation_id)).result == passing("dispatch-3")
+    assert (await w.stored(third.operation_id)).result == as_served(passing("dispatch-3"))
     assert [r.dispatch_id for r in w.runner.runs] == ["dispatch-1", "dispatch-3"]
     assert w.runner.resets == 2  # at start (#3046), and the one that held before the third
 
@@ -328,7 +339,7 @@ async def test_a_reset_that_fails_at_a_claim_reads_not_ready_on_the_status_until
         await serving.until(w.settled(second.operation_id))
 
     assert (reports[-1].tool_ready, reports[-1].tool_note) == (True, "")
-    assert (await w.stored(second.operation_id)).result == passing("dispatch-2")
+    assert (await w.stored(second.operation_id)).result == as_served(passing("dispatch-2"))
 
 
 async def test_a_worker_whose_session_was_ended_stops_its_tool_and_registers_again(w):
@@ -351,7 +362,7 @@ async def test_a_worker_whose_session_was_ended_stops_its_tool_and_registers_aga
 
     ((session, _),) = await w.registry.sessions()
     assert session.session_id not in (first.session_id, intruder.session_id)
-    assert (await w.stored(queued.operation_id)).result == passing("dispatch-1")
+    assert (await w.stored(queued.operation_id)).result == as_served(passing("dispatch-1"))
     assert await w.attempts() == [(1, "expired"), (2, "accepted")]
     assert w.runner.resets == 2  # at start (#3046), then for the session it lost
 
@@ -415,7 +426,7 @@ async def test_a_result_the_runtime_cant_take_yet_is_submitted_again_and_accepte
         w.api.down = set()
         await serving.until(w.settled(queued.operation_id))
 
-    assert (await w.stored(queued.operation_id)).result == passing("dispatch-1")
+    assert (await w.stored(queued.operation_id)).result == as_served(passing("dispatch-1"))
     assert await w.attempts() == [(1, "accepted")]
     assert len(w.runner.runs) == 1
 
@@ -498,7 +509,7 @@ async def test_a_result_with_evidence_past_its_limit_is_settled_not_executed_nam
         "the provider's result can't be returned: evidence item 'console.txt' is 262,145 "
         "bytes, past the 262,144-byte limit"
     )
-    assert result.ran_with == {"worker": "worker"}
+    assert result.ran_with == {"worker": "worker", "served_by": "macbook"}
 
 
 async def test_a_worker_resets_its_tool_before_it_registers_and_records_what_it_knows(w):

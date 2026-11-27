@@ -125,6 +125,25 @@ def passing(dispatch_id: str = "dispatch-1", by: str = "worker") -> RemoteOperat
     )
 
 
+def as_served(result: RemoteOperationResult, by: str = "macbook") -> RemoteOperationResult:
+    """``result`` as the registry keeps it once accepted from worker ``by`` (#3200): who served it
+    is the registry's word, written into ``ran_with``."""
+    return replace(result, ran_with={**result.ran_with, "served_by": by})
+
+
+class _NoSession:
+    """A store's transaction that no longer returns any session, and is otherwise itself."""
+
+    def __init__(self, tx) -> None:
+        self._tx = tx
+
+    async def session(self, session_id: str):
+        return None
+
+    def __getattr__(self, name: str):
+        return getattr(self._tx, name)
+
+
 def registration(worker_id: str = "macbook", *served: ServedOperation) -> WorkerRegistration:
     return WorkerRegistration(
         worker_id=worker_id,
@@ -197,7 +216,7 @@ class WorkerRegistryContract:
 
         assert accepted.refusal is None
         settled = await registry.operation(queued.operation_id)
-        assert (settled.state, settled.result) == (OperationState.SETTLED, passing())
+        assert (settled.state, settled.result) == (OperationState.SETTLED, as_served(passing()))
         assert settled.fence is None
 
     async def test_a_late_result_never_satisfies_a_newer_attempt(self, registry, clock):
@@ -219,8 +238,46 @@ class WorkerRegistryContract:
 
         assert (await registry.submit_result(newer.fence, passing(by="mac-mini"))).refusal is None
         assert (await registry.operation(queued.operation_id)).result.ran_with == {
-            "worker": "mac-mini"
+            "worker": "mac-mini",
+            "served_by": "mac-mini",
         }
+
+    async def test_who_served_a_result_is_the_registrys_word_not_the_workers(self, registry):
+        """#3200. Bug caught: a reading taking the worker's own name for itself, so a baseline's
+        and a candidate's plays read as one worker's (or as two) on a claim nothing checked."""
+        queued = await queue(registry, request())
+        session = await registry.register(registration("macbook"))
+        claim = await registry.claim(session.session_id)
+        claimed = replace(passing(), ran_with={"served_by": "somebody-else", "tool": "7"})
+
+        assert (await registry.submit_result(claim.fence, claimed)).refusal is None
+
+        assert (await registry.operation(queued.operation_id)).result.ran_with == {
+            "served_by": "macbook",
+            "tool": "7",
+        }
+
+    async def test_a_result_whose_session_the_store_cant_return_is_never_settled_on_the_workers_word(
+        self, registry, monkeypatch
+    ):
+        """#3200, from the MacBook lane's review. The fence was accepted under the session, so a
+        store that can't return it is a defect. Bug caught: the result settled with the worker's
+        own ``served_by`` standing as the registry's, so two plays read as one worker's on the
+        workers' say."""
+        queued = await queue(registry, request())
+        session = await registry.register(registration("macbook"))
+        claim = await registry.claim(session.session_id)
+        claimed = replace(passing(), ran_with={"served_by": "somebody-else"})
+
+        async def lost(tx, fence, result):
+            return await type(registry)._served(registry, _NoSession(tx), fence, result)
+
+        monkeypatch.setattr(registry, "_served", lost)
+
+        with pytest.raises(RuntimeError, match="which the store doesn't hold"):
+            await registry.submit_result(claim.fence, claimed)
+
+        assert (await registry.operation(queued.operation_id)).result is None
 
     async def test_a_lease_that_runs_out_requeues_and_the_last_attempt_ends_interrupted(
         self, registry, clock
@@ -279,7 +336,7 @@ class WorkerRegistryContract:
             dispatch_id="dispatch-1",
         )
         assert (await registry.submit_result(claim.fence, interrupted)).refusal is None
-        assert (await registry.operation(queued.operation_id)).result == interrupted
+        assert (await registry.operation(queued.operation_id)).result == as_served(interrupted)
 
     async def test_a_heartbeat_after_the_lease_ran_out_is_told_so_and_the_operation_is_freed(
         self, registry, clock
@@ -336,7 +393,8 @@ class WorkerRegistryContract:
 
         assert (again.refusal, again.replayed) == (None, True)
         assert (await registry.operation(queued.operation_id)).result.ran_with == {
-            "worker": "first"
+            "worker": "first",
+            "served_by": "macbook",
         }
         assert await registry.refusals(queued.operation_id) == []
 
@@ -695,7 +753,8 @@ class WorkerRegistryContract:
             "cancelled while attempt 1 held it. Its worker's result (completed) arrived after "
             "the cancel: it is kept as the late result, and is no evidence"
         )
-        assert stored.late_result == passing()
+        # #3200: who served a late result is the registry's word too.
+        assert stored.late_result == as_served(passing())
         async with store.exclusive() as tx:
             assert (await tx.attempt(operation.operation_id, 1)).outcome is AttemptOutcome.CANCELLED
         assert await registry.refusals(operation.operation_id) == []
@@ -714,7 +773,7 @@ class WorkerRegistryContract:
         stored = await registry.operation(operation.operation_id)
         assert reached == []
         assert (stored.result, stored.late_result, stored.cancel_requested) == (
-            passing(),
+            as_served(passing()),
             None,
             False,
         )

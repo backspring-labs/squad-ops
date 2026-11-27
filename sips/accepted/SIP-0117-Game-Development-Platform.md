@@ -201,7 +201,8 @@ phases are in its own ledger.
 | An owner's cancel: a cycle's cancel and a Campaign's abort stop the remote operations they own, a result that arrives after the cancel is kept as the late result and is no evidence, and nothing new is queued for a cancelled owner (R5.30) | **shipped** | 2.9 (PR #3256; #3236 tracks the MacBook lane's half) |
 | A qualification names each tool whose definition changed: each tool's own digest in the record (schema `/3`), `tools_changed` beside the added and removed, the worker's refusal naming the tools that differ, and a comparison against an earlier record read as unavailable, never as no change (R5.31) | **shipped** | 2.9 (PR #3262, closing #3230) |
 | A result the worker builds itself names what its run had established: the cancel's and a raise's `interrupted` carry the runner's `running_with()`, read before the reset (R5.34) | **shipped** | 2.9 (PR #3277; #3236 tracks the live cancel round on real Studio) |
-| A candidate's own setup failure repaired in the run: attributed to the candidate only when the six conditions of the 2.9 plan's item 7 hold, each with its evidence kept, then one bounded in-run correction with the console's error in its evidence; anything else keeps today's routing, not executed (a numbered amendment beside R5.28, made in the PR that builds it) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
+| A candidate's own setup failure, the core: a play's result names the script errors its provider read, the registry writes who served it, and six conditions read from the cycle's records attribute a setup failure to the candidate, which then gets one correction in the run; the reading is kept either way, and anything else keeps its routing, not executed (R5.32) | **shipped** | 2.9 (PR #3275) |
+| A candidate's own setup failure, on Studio: the provider reads its console for script errors and names its environment (the MacBook lane), and the played diagnostic goes from baseline to attributed failure to repair to the same frozen scenarios passing (R5.32) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
 | A dedicated worker brings Studio to the front: inside its declared window, after the idle threshold and a fresh read of human input, each activation and refusal recorded in `ran_with`, and anything uncertain a refusal (R5.33; the Spark lane wrote the rule and the MacBook lane built it) | **shipped** | 2.9 (PR #3269, closing #3193) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
@@ -1756,6 +1757,69 @@ replaces. The worker's refusal of a Studio whose tool list differs names the too
 - a `/3` record missing its per-tool keys is refused by name, as any record with the wrong keys is.
 
 The live runs on the Mac's Studio are in the PR.
+
+## R5.32 A candidate's own setup failure gets one correction in the run (#3200, 2026-11-26; R3.7, R4.4, R5.1, R5.7, R5.28, R5.29; SIP-0096)
+
+**What changed.** A play whose scenario's world wasn't established reads `setup_failed` for every assertion.
+That is *not executed*, and it stays so: nothing is credited and nothing failed. One thing is added. Before
+such a play is accepted as unverified, the run reads whether the failure is the candidate's own, by six
+conditions, each read from a record. When all six hold, the run spends one correction on the candidate, with
+the error its provider named in the correction's evidence. When any doesn't, the routing is what it was.
+
+**The evidence.** The 2.8 demonstration's rehearsal 3 (`cmp_83836022543d`, 2026-11-18), cycle
+`cyc_4c0ec08c327d`. The candidate set a property its screen object doesn't have, so its client raised as it
+started and the title screen never appeared. All six candidate plays read `setup_failed`, and each play's
+console named the error and its line. Both baselines had met the same setup minutes earlier. The run made no
+correction, the cycle ended `blocked_unverified`, and about 12 minutes of plays were spent on a fault the
+first play's console had already named.
+
+**The six conditions** (`remote_execution/setup_attribution.py`, pure: it reads two reading documents and what
+the caller knows of the candidate's tree).
+
+| # | Condition | Read from |
+|---|---|---|
+| 1 | The same frozen scenario's setup was met on the baseline, in this cycle | The cycle's stored baseline reading of the criterion (R5.7): the same scenario digest, completed, every assertion executed |
+| 2 | Both plays ran in one environment, served by one worker | `ran_with["environment"]`, which the provider names, and `ran_with["served_by"]`, which the registry writes. Both present and equal on both readings |
+| 3 | The candidate's provider named an error in a file the candidate changed, inside its approved footprint | The candidate reading's `script_errors`; the staged tree against the pinned checkout; the approved change request's footprint |
+| 4 | The error was logged before the setup's first unmet wait ran out | Every assertion of the candidate's play reads `setup_failed`: the play stopped at its setup, which is where its provider reads the log |
+| 5 | The baseline's play named no such error | The baseline reading's `script_errors`. A reading kept before readings carried the key can't say it had none, and fails this. So does one whose list can't be read: a value that isn't a list, or any entry that isn't a path, a line and a message. Nothing is dropped and read around, on either side |
+| 6 | Neither play was refused for the worker's own environment | `tool_unready` and `unavailable` false on both, and both completed, so each was held to its proof (R5.28, R5.29) |
+
+**As built.**
+
+| Point | As built | Why |
+|---|---|---|
+| **The provider reports facts; core attributes** | `RemoteOperationResult.script_errors`: each a staged path, a line and the tool's message. A provider sets it, only on `completed`. The wire carries it as an optional key, and every reading's document carries it. A result naming an error in a file the request didn't stage is refused whole (`result_defects`) | A console is engine prose, and R3.7 has core read no prose. The provider owns mapping its tool's name for a script back to the staged file |
+| **What a provider reports** | Only an error with a stack, whose raising frame is a staged file, and the first such block: an error raised by the provider's own probe, an engine or network error with no stack, and the follow-on errors a failed module load raises in each requirer up the chain are not reported | The MacBook lane's reading of Studio's own logs (2026-11-26): about 200 stackless engine errors a day on the place. And the six candidate consoles the vault holds (three cycles, 2026-11-18 and 11-19): a module that fails to load writes its own block and then one follow-on block for each requirer above it, two in the 2.8.1 diagnostic's plays; no line carries a level prefix; and each console holds one play's output |
+| **Who served a play is the registry's word** | `ran_with["served_by"]` is written at acceptance, from the session that submitted the result. A worker's own value under that key is dropped first, whatever follows, and a late result kept after a cancel (R5.30) is stamped the same way. A session the store can't return at an accepted fence is a defect, and raises: nothing settles without the name | Two readings can then be told to share a worker without believing either one's own name for itself |
+| **The environment is one value, the provider's** | `ran_with["environment"]`: equal for two plays only when everything the provider holds fixed between them is equal (for Studio: the pinned place, the qualified identity and the harness). A provider that can't say leaves it out, and condition 2 then fails | Core compares one value and names no engine's keys |
+| **"Before the setup's first unmet wait" is read as "in the log when the setup stopped"** | Condition 4, above | The console carries no timestamps, and the provider reads it once, after the scenario stops at its first unmet setup wait. An error that arrived before the wait began can't be told from one that arrived during it. Read strictly, the condition would fail on the case this amendment exists for, since the client raised as the wait began. Ruled by the Spark lane under the owner's grant of 2026-11-26, and named here because it narrows the plan's wording |
+| **Where it is read** | `execution/setup_failure_correction.py`, at the executor's last word on an attempt an agent reported succeeded (`_TaskOutcomeRouter.screen`), for a task that runs an operation | The same seam SIP-0109 §24do uses to refuse a suite that passes on the head: the one place a succeeded result becomes a failure the correction loop routes |
+| **The reading is always kept** | `setup_attribution.json`, beside the play's evidence: all six conditions, held or not, each with its evidence, the errors, the baseline reading's artifact id, and whether a correction was dispatched and why not | The plan's item 7: the evidence for each condition is kept and linked from the attribution |
+| **One correction, when there is one to spend** | Once per task. None when the run has no correction left: `max_correction_attempts` 0, or its corrections spent. The reading then says `not_dispatched` and why, and the play goes on as unverified | With in-run correction off, the cycle still ends `blocked_unverified` and the Campaign routes §10 row 8, as the 2.8.1 diagnostic's profile needs. A refusal there would end the run on an exhausted budget instead |
+| **No unexecuted assertion becomes an executed failure** | The refused result keeps the play's own check rows, every one not executed. The correction's gate, which admits a played task only for an executed failure (R5.1), admits this one more case by the attribution on the result | SIP-0096: only executed-and-passed credits, and only executed-and-failed fails |
+| **The repair** | The existing correction for a played task (R4.4): a development repair aimed at the plan's implementation, then the operation re-run on the repaired tree. The error's file, line and message are in the failure it is handed | Nothing new is built to repair with |
+
+**The tests.**
+- `tests/unit/remote_execution/test_setup_attribution.py`: an attributable fault; each condition failing alone,
+  eleven ways; a play that went past its setup; a baseline that can't say; a record that isn't one.
+- `tests/unit/cycles/test_setup_failure_correction.py` enters at `_TaskOutcomeRouter.screen`, which the
+  dispatcher is handed as `screen_success`, and then at the executor's classification of what it returns: an
+  attributed failure refused with the error, its rows untouched, and let on to correction; three ways of not
+  being attributed, each keeping today's routing with the reading kept; the newest baseline reading read; no
+  correction to spend, three ways; a pin that can't be read. Five mutations each fail one.
+- The wire, the registry's stamp and the fixture provider's stand-in for a tool's log each have their own.
+
+**Not in this amendment.**
+- **The Studio provider's half:** reading its console for script errors and naming its environment. The MacBook
+  lane builds and proves it on real Studio. Until it lands, a Studio play names no script error and no
+  environment, so no Studio play is attributed, and the routing is today's.
+- **The played diagnostic** of the plan's item 7 (baseline, attributed failure, repair, the same frozen
+  scenarios passing), which needs both halves.
+- **A row-8 repair cycle's evidence** (#3272): the Campaign's repair is still sent no script error.
+
+**Who ruled.** The owner adopted the 2.9 plan on 2026-11-26, whose item 7 and ruling D2 state the six
+conditions. The Spark lane built the core, and ruled condition 4's reading as said above.
 
 ## R5.33 A dedicated worker brings Studio to the front, inside its declared window (#3193, 2026-11-26; R5.18, R5.28, R5.29; the 2.9 plan's item 12, D1, D7, D12)
 

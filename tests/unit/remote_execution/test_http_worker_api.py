@@ -41,7 +41,13 @@ from squadops.remote_execution.workers import (
     WorkerRegistration,
 )
 from tests.unit.api.worker_world import World, identity
-from tests.unit.remote_execution.registry_contract import PLAY, passing, queue, request
+from tests.unit.remote_execution.registry_contract import (
+    PLAY,
+    as_served,
+    passing,
+    queue,
+    request,
+)
 from tests.unit.remote_execution.scenario_fixture import OPEN, door_opens, tree
 from tests.unit.remote_execution.worker_harness import Serving, sleeping_on
 
@@ -172,7 +178,7 @@ async def test_each_call_reads_the_routes_answer_into_the_registrys_own_words():
     # result is taken in and kept as the late one, and the operation reads interrupted.
     stored = await world.registry.operation(queued.operation_id)
     assert stored.result.status is OperationStatus.INTERRUPTED
-    assert stored.late_result == passing()
+    assert stored.late_result == as_served(passing())  # #3200: the registry's word
     await api.close()
 
 

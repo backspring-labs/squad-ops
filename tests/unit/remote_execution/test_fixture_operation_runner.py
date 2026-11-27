@@ -16,6 +16,7 @@ from adapters.remote_execution.fixture_operation_runner import (
     OPERATION,
     PROVIDER,
     RUN_LOG_NAME,
+    SCRIPT_ERRORS_PATH,
     VERSION,
     VOCABULARY,
     WORLD_PATH,
@@ -25,6 +26,7 @@ from squadops.remote_execution.models import (
     AssertionOutcome,
     OperationStatus,
     RemoteOperationRequest,
+    ScriptError,
     outcomes_by_assertion,
     result_defects,
 )
@@ -139,6 +141,51 @@ async def test_a_scenario_that_isnt_the_frozen_one_for_this_reader_is_not_execut
     assert result.records == ()
 
 
+async def test_a_staged_log_names_the_errors_raised_in_staged_files_and_the_plays_environment():
+    """#3200. The fixture's stand-in for a tool's log. Bugs caught: an error in no staged file
+    reported, which the handler would refuse the whole result for; or two fixture plays with no
+    environment in common, so no fixture rehearsal could ever attribute a setup failure."""
+    unspawned = {**OPEN, "client": {}}
+    files = tree(unspawned)
+    files["src/spawn.luau"] = "error('no spawn')\n"
+    files[SCRIPT_ERRORS_PATH] = json.dumps(
+        [
+            {"path": "src/spawn.luau", "line": 1, "message": "no spawn"},
+            {"path": "engine/internal.luau", "line": 9, "message": "not the product's"},
+        ]
+    )
+    asked = _request(files)
+
+    result = await FixtureOperationRunner().run(asked)
+
+    assert result_defects(asked, result) == []
+    assert result.script_errors == (ScriptError("src/spawn.luau", 1, "no spawn"),)
+    assert result.ran_with["environment"] == "fixture@2/fixture/1"
+    again = await FixtureOperationRunner().run(_request(tree(OPEN)))
+    assert (again.script_errors, again.ran_with["environment"]) == ((), "fixture@2/fixture/1")
+
+
+@pytest.mark.parametrize(
+    "staged",
+    [
+        "{not json",
+        json.dumps({"path": "a"}),
+        json.dumps([{"path": "a", "line": "1", "message": "m"}]),
+    ],
+    ids=["not JSON", "not a list", "a line that isn't a number"],
+)
+async def test_a_staged_log_that_cant_be_read_is_not_executed(staged):
+    """Bug caught: a malformed log read as an empty one, so a play reports no script error
+    when its log was never read."""
+    files = tree(OPEN)
+    files[SCRIPT_ERRORS_PATH] = staged
+
+    result = await FixtureOperationRunner().run(_request(files))
+
+    assert result.status is OperationStatus.NOT_EXECUTED
+    assert SCRIPT_ERRORS_PATH in result.reason
+
+
 @pytest.mark.parametrize(
     ("world", "reason"),
     [
@@ -206,7 +253,12 @@ async def test_what_a_held_run_has_established_is_its_identity_and_nothing_after
         await asyncio.Event().wait()  # held until it is stopped
 
     runner._sleep = sleep
-    identity = {PROVIDER: VERSION, "reader": VOCABULARY.reader}
+    identity = {
+        PROVIDER: VERSION,
+        "reader": VOCABULARY.reader,
+        # R5.32: the environment a fixture play names, on a stopped play as on a completed one.
+        "environment": f"{PROVIDER}@{VERSION}/{VOCABULARY.reader}",
+    }
     assert runner.running_with() == {}
 
     held = asyncio.ensure_future(runner.run(_request(tree(OPEN, **{HOLD_PATH: "5"}))))

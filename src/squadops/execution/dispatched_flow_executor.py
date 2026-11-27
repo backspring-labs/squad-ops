@@ -188,6 +188,10 @@ from squadops.execution.scenario_baseline import (
     judge_scenario_baselines,
     scenario_criteria_of,
 )
+from squadops.execution.setup_failure_correction import (
+    attributed_setup_failure,
+    screen_setup_failure,
+)
 from squadops.execution.skill_supply import SkillSupply
 from squadops.execution.source_checkout import seed_checkout_artifacts, task_source_repository
 from squadops.execution.source_delivery import (
@@ -550,6 +554,9 @@ class _Correction:
     #: §24do: the head's reading of the emission about to be accepted, by task id, taken before
     #: its acceptance and recorded after its collection (``_fail_if_criteria_pass_on_head``).
     head_readings: dict[str, Any] = dataclasses.field(default_factory=dict)
+    #: SIP-0117 R5.32 (#3200): the played tasks that have had their one correction for a setup
+    #: failure attributed to the candidate.
+    setup_failure_repaired: set[str] = dataclasses.field(default_factory=set)
 
 
 @dataclasses.dataclass
@@ -854,8 +861,27 @@ class _TaskOutcomeRouter:
     async def screen(self, result: TaskResult) -> TaskResult:
         """The dispatcher's ``screen_success``, and the router's for a pass on the product's
         runner: ``result`` before it is accepted, or the failure it is refused as (§24do)."""
-        return await self.executor._screen_on_head(
-            result, self.envelope, self.enriched, self.cycle, self.run_id, self.state
+        executor, state, cycle = self.executor, self.state, self.cycle
+        screened = await executor._screen_on_head(
+            result, self.envelope, self.enriched, cycle, self.run_id, state
+        )
+        if screened.status != TaskResultStatus.SUCCEEDED or not runs_an_operation(
+            str(self.envelope.task_type)
+        ):
+            return screened
+        # SIP-0117 R5.32 (#3200): a played scenario whose setup failed, read for whether the
+        # failure is the candidate's own before its play is accepted as unverified.
+        budget = cycle.resolved_config().get("max_correction_attempts", 2)
+        return await screen_setup_failure(
+            screened,
+            self.envelope,
+            self.enriched,
+            cycle,
+            vault=executor._artifact_vault,
+            repository=executor._source_repository,
+            registry=executor._project_registry,
+            spent=state.correction.setup_failure_repaired,
+            correction_left=state.correction.counter["n"] < budget,
         )
 
     def record_evidence(self, task_result) -> None:
@@ -4233,8 +4259,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0117 R5.1: a remote operation is corrected by repairing the application, which
         # is a remedy only for an assertion that executed and failed. Without one there is
         # nothing a developer's edit could fix.
-        if corrects_only_executed_failures(envelope.task_type) and not has_blocking_failure(
-            result.outputs
+        # R5.32 (#3200) adds one case: a setup failure the six conditions attribute to the
+        # candidate, which the screen refused with its attribution on the result.
+        if (
+            corrects_only_executed_failures(envelope.task_type)
+            and not has_blocking_failure(result.outputs)
+            and not attributed_setup_failure(result.outputs)
         ):
             raise _ExecutionError(
                 f"{envelope.task_type} task {envelope.task_id} failed with no executed "

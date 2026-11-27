@@ -169,7 +169,10 @@ class _Deploy:
 
 
 def _named(result) -> set[str]:
-    return {k for k in result.ran_with if not k.startswith("harness.")}
+    """What the run named of itself: every key but the harness digests and the registry's own
+    word on who served the result, which it adds at acceptance (R5.32)."""
+    assert result.ran_with["served_by"] == "macbook"
+    return {k for k in result.ran_with if not k.startswith("harness.") and k != "served_by"}
 
 
 @pytest.mark.parametrize(
