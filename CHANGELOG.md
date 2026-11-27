@@ -8,7 +8,7 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 ### Added
 - **Two diagnostics for the 2.9 certification window** (#3284; the pre-registration's cases 9 and 10). Neither is a
   capability: a cycle that declares a fault is never counted.
-  - `campaign-increment-source-client-stops-corrected`: the 2.8.1 client-stops fault with in-run correction on, for
+  - `campaign-increment-source-client-stops-corrected`: #3222's client-stops fault with in-run correction on, for
     the setup failure SIP-0117 R5.32 attributes and repairs in the run.
   - `luau_client_stalls_at_start`, declared by `campaign-increment-source-client-stalls`: the candidate's first
     client script never finishes where the engine loads it and raises nothing, for the setup failure R5.32 must not
