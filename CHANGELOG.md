@@ -19,6 +19,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   - **The evaluator image is cut as `…ruff0.17-eslint10.12-9`.** Lighthouse, axe, ESLint, the driver and the
     Chromium pin are -8's. A lint reading on -8 or earlier stays its own series.
   - ruff 0.17.5 reformats no file in the repository.
+- **A Studio play reads the place's state twice, not three times** (#3250, the 2.9 plan's item 13; SIP-0117
+  R5.36): the read after the sync is gone. The sync writes only the synced folders, which the state read leaves out,
+  so that read saw nothing the read after play doesn't. The pin check's own reading is the play's "before".
+  - The before set measured the three reads at 67.8 s of a 98.3 s median play; this removes one, about 22.6 s.
+  - A change made while the sync ran, and left in place, is now refused; one undone before play ends passes, which
+    is what is lost. Either is the work's refusal, as before.
+  - A place without a synced root the request writes into is refused by name before anything is written, as the
+    Mac's: the sync would create it, and no play's state could then match its pin.
+
 - **A new loaded check goes in a file of its own** (#3268): `scripts/dev/loaded_checks.d/<issue>.yaml`, read
   with `loaded_checks.yaml` as one set by `verify_loaded.py`, the verification-set driver and the test that
   runs each row on the source (`scripts/dev/loaded_check_rows.py`). While every row was appended to the one

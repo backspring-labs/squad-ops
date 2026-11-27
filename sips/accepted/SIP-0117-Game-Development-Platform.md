@@ -201,6 +201,7 @@ phases are in its own ledger.
 | An owner's cancel: a cycle's cancel and a Campaign's abort stop the remote operations they own, a result that arrives after the cancel is kept as the late result and is no evidence, and nothing new is queued for a cancelled owner (R5.30) | **shipped** | 2.9 (PR #3256; #3236 tracks the MacBook lane's half) |
 | A qualification names each tool whose definition changed: each tool's own digest in the record (schema `/3`), `tools_changed` beside the added and removed, the worker's refusal naming the tools that differ, and a comparison against an earlier record read as unavailable, never as no change (R5.31) | **shipped** | 2.9 (PR #3262, closing #3230) |
 | A result the worker builds itself names what its run had established: the cancel's and a raise's `interrupted` carry the runner's `running_with()`, read before the reset (R5.34) | **shipped** | 2.9 (PR #3277; #3236 tracks the live cancel round on real Studio) |
+| A play reads the place's non-script state twice, at its pin check and after play, the second held to the first; a place without a synced root its scripts go into is refused by name (R5.36) | **shipped** | 2.9 (PR #3290) |
 | A candidate's own setup failure, the core: a play's result names the script errors its provider read, the registry writes who served it, and six conditions read from the cycle's records attribute a setup failure to the candidate, which then gets one correction in the run; the reading is kept either way, and anything else keeps its routing, not executed (R5.32) | **shipped** | 2.9 (PR #3275) |
 | A candidate's own setup failure, on Studio: the provider reads its console for script errors and names its environment (the MacBook lane; R5.32's Studio half) | **shipped** | 2.9 (PR #3288) |
 | A candidate's own setup failure, played: the diagnostic goes from baseline to attributed failure to repair to the same frozen scenarios passing (R5.32; the certification window's case 9) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
@@ -1997,6 +1998,60 @@ out for a cycle in none; and a Campaign's `cancel_owned` reaching an operation a
 
 **Who ruled.** The Spark lane, under the owner's grant of 2026-11-26, as a completion of R5.30 inside the 2.9
 plan's item 2.
+
+## R5.36 A play reads the place's state twice, at its pin check and after play (#3250, 2026-11-27; R3.6, R5.17, R5.34; the 2.9 plan's item 13)
+
+**What changed.** A play read the place's non-script state three times: at the pin check before the sync, again
+after the sync and before play, and after play stopped. The read after play was compared with the read after the
+sync. Now the read after the sync is gone. The pin check's own reading is the play's "before", and the read after
+play is held to it.
+
+**The evidence** (#3250, comment 7213635288: the before set, 20 plays of the matched scenario on the pin
+`edcbf9c1…`, 2026-11-27 02:56–03:30 ET). Median claim to completion was 98.339 s, and the three reads took 67.8 s
+of it (`place_state_s` 22.577, `baseline_before_s` 22.610, `baseline_after_s` 22.596). The target is a cut of 20%,
+19.67 s. On every play the read after the sync gave the pin's own digest (`place_baseline` `354636ad417cda41`).
+
+**Why the read after the sync could go.** The sync writes only inside the three synced folders, and the state read
+leaves their contents out: the scripts' read-back covers them. So that read could see nothing the sync did. It
+differed from the pin check only if something else changed the place in the sync's 14 seconds, and the read after
+play sees that change too.
+
+**What moves, in both directions** (the Spark lane's review):
+- **Stricter.** A change made during the sync and left in place was credited before, since the two later reads
+  agreed on it. It is refused now.
+- **Looser, in one corner.** A change made during the sync and undone before play ends was refused before. It
+  passes now. It takes something acting on the place twice inside one play. That is what is lost.
+- **Whose refusal it is, unchanged.** A changed place is `not_executed`, with no `tool_unready`, and read as the
+  work's. The window it covers grows by the sync's 14 seconds, so a person or a tool touching Studio during the sync
+  now ends as the work's refusal, where before it went unseen. In a dedicated window that is rare, and it fails toward
+  not crediting. The reason reads "changed between its pin check and the end of play", with `baseline_changes`'
+  list of what changed.
+
+**A place without a synced root.** The state read holds each synced root as a line. The sync creates any missing
+folder on a write's path, the root included. So a place lacking a root its scripts go into would read differently
+from its pin after every play. So right after the pin check, before anything is written, each synced root the request
+writes into, and each folder above it below its service, must have its line in the pin check's reading. A missing
+one is `not_executed` with `tool_unready`, naming the folder: it is the place's setup, the Mac's, and is retried,
+never repaired. On the product in use every root is there.
+
+**`place_baseline`** is the pin check's own reading, established right after it, never the pinned constant copied in.
+So a play cancelled during the sync names it now (R5.34), which is earlier than before.
+
+**`stages.json`** carries no `baseline_before_s`: a stage that didn't run is absent (amendment 13a's point 1).
+
+**The tests** (`tests/unit/remote_execution/test_roblox_studio_state_reads.py`, entered at `RobloxStudioRunner.run`
+over the stand-in, whose sync can now change the state, `baseline_after_sync`):
+- a change made while the sync ran, and left in place, is refused as the work's, naming the window and the change;
+- a play reads the state twice and records the pin check's own digest;
+- a place without the synced root its scripts go into is refused by name, with nothing synced.
+
+Each fails on main's runner before this change: the change is credited, the state is read three times, and the
+rootless place plays. A play cancelled during the sync names `place_baseline`
+(`test_roblox_studio_cancel.py`). The changes through play and the drift before the sync are refused as before, by
+their existing tests.
+
+**Who ruled.** The two lanes, under the owner's grant of 2026-11-26 for the 2.9 line: the Spark lane froze the
+matched set and read the design, and the MacBook lane built it. It narrows no done-when and changes no claim.
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
 

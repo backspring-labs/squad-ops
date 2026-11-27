@@ -83,7 +83,8 @@ async def test_a_played_scenario_carries_each_stage_it_ran_and_each_wait(tmp_pat
 
     assert result.status is OperationStatus.COMPLETED, result.reason
     document = _stages(result)
-    ran = [name for name in STAGES if name != "reset_s"]
+    # R5.36: the state is read twice, at the pin check and after play; no reset ran.
+    ran = [name for name in STAGES if name not in ("reset_s", "baseline_before_s")]
     assert list(document["stages"]) == ran
     assert all(seconds >= 0 for seconds in document["stages"].values())
     assert len(document["waits"]) == 1  # the declaration's one wait_until

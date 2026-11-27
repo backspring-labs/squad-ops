@@ -14,7 +14,8 @@ paths in ``ignore_writes``, and saves the world back to its file. Each program r
 ``execute_luau:<name>``, and its code appended to ``code_log`` when the world names one. Any other
 code is refused, as a program the harness doesn't hold.
 
-``baseline`` pages the world's ``baseline`` lines (``baseline_after_play`` once play has stopped,
+``baseline`` pages the world's ``baseline`` lines (``baseline_after_sync`` once a sync has run;
+``baseline_after_play`` once play has stopped,
 when given); ``baseline_stall`` answers a page that doesn't advance. ``script_marks`` answers the
 world's ``marked``. ``start_stop_play`` moves the world's ``mode`` between Play and Edit, unless
 ``stuck`` holds it, and ``get_studio_state`` reports ``mode`` when the world has one. Stopping
@@ -110,6 +111,9 @@ def sync(job):
                 tree.append(node)
             if depth == len(parts):
                 node["className"] = write["class"]
+    if "baseline_after_sync" in world:
+        # Something changed the place's non-script state while the sync ran (R5.36).
+        world["baseline"] = world["baseline_after_sync"]
     removed = 0
     for path in job["removes"]:
         dotted = path.replace("/", ".")

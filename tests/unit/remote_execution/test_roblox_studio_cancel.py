@@ -79,6 +79,16 @@ class _Hold:
         if at == "open":
             session.open = self._held
             return session
+        if at.startswith("program:"):
+            run_program = session.run_program
+
+            async def held_program(name, *args, **kwargs):
+                if name == at.removeprefix("program:"):
+                    await self._held()
+                return await run_program(name, *args, **kwargs)
+
+            session.run_program = held_program
+            return session
         call = session.call
 
         async def held_call(tool, arguments):
@@ -182,10 +192,12 @@ def _named(result) -> set[str]:
         ("open", RUN),
         # After the proof, before the place was found: the Studio, and no place.
         ("list_roblox_studios", RUN | PROOF),
+        # During the sync (R5.36): the pin check's own reading is the place's baseline already.
+        ("program:sync", RUN | PROOF | {"place_baseline"}),
         # Mid-scenario, at the setup's click: the place's baseline too, and no play session.
         ("user_mouse_input", RUN | PROOF | {"place_baseline"}),
     ],
-    ids=["before-the-proof", "after-the-proof", "mid-scenario"],
+    ids=["before-the-proof", "after-the-proof", "during-the-sync", "mid-scenario"],
 )
 async def test_a_cancelled_play_names_what_it_had_read_and_nothing_more(
     tmp_path, cancel_at, established
