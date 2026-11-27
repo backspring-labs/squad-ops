@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import dataclasses
 import json
 
@@ -15,6 +17,7 @@ from adapters.remote_execution.fixture_operation_runner import (
     PROVIDER,
     RUN_LOG_NAME,
     SCRIPT_ERRORS_PATH,
+    VERSION,
     VOCABULARY,
     WORLD_PATH,
     FixtureOperationRunner,
@@ -237,6 +240,39 @@ async def test_a_hold_that_isnt_a_number_of_seconds_is_not_executed_with_the_val
     assert result.reason == f"{HOLD_PATH} is {held!r}, which isn't a number of seconds"
     assert (result.records, slept) == ((), [])
     assert result_defects(asked, result) == []
+
+
+async def test_what_a_held_run_has_established_is_its_identity_and_nothing_after_a_reset():
+    """#3236. Bugs caught: a fixture play stopped during its hold that names nothing it ran
+    on, a record that outlives the reset, and one a request for another operation fills."""
+    runner = FixtureOperationRunner()
+    reached = asyncio.Event()
+
+    async def sleep(seconds: float) -> None:
+        reached.set()
+        await asyncio.Event().wait()  # held until it is stopped
+
+    runner._sleep = sleep
+    identity = {
+        PROVIDER: VERSION,
+        "reader": VOCABULARY.reader,
+        # R5.32: the environment a fixture play names, on a stopped play as on a completed one.
+        "environment": f"{PROVIDER}@{VERSION}/{VOCABULARY.reader}",
+    }
+    assert runner.running_with() == {}
+
+    held = asyncio.ensure_future(runner.run(_request(tree(OPEN, **{HOLD_PATH: "5"}))))
+    await reached.wait()
+    during = runner.running_with()
+    held.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await held
+    await runner.reset()
+    after_reset = runner.running_with()
+    refused = await runner.run(_request(tree(OPEN), operation="play_scenario"))
+
+    assert (during, after_reset) == (identity, {})
+    assert (refused.status, runner.running_with()) == (OperationStatus.NOT_EXECUTED, {})
 
 
 async def test_an_operation_the_fixture_doesnt_run_is_not_executed():

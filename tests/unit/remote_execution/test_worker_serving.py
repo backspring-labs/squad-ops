@@ -162,6 +162,7 @@ async def test_a_cancel_stops_the_tool_resets_it_and_settles_the_operation_inter
     operation without a reset."""
     queued = await w.enqueue()
     w.runner.run_seconds = None
+    w.runner.establishes = {"scripted-editor": "7.2", "place": "p-1"}
 
     async with Serving(w.worker) as serving:
         await serving.until(w.claimed(queued.operation_id))
@@ -174,6 +175,14 @@ async def test_a_cancel_stops_the_tool_resets_it_and_settles_the_operation_inter
         REASON_CANCELLED,
     )
     assert operation.result.dispatch_id == "dispatch-1"
+    # #3236: what the run had established, read after it was stopped and before the reset
+    # (the harness's reset clears it, so a read after the reset would carry nothing).
+    # R5.32: who served it is the registry's word, added at acceptance to what the run named.
+    assert dict(operation.result.ran_with) == {
+        "scripted-editor": "7.2",
+        "place": "p-1",
+        "served_by": "macbook",
+    }
     assert len(w.runner.stopped_at) == 1
     assert w.runner.resets == 2  # at start (#3046), then after the cancel
     assert await w.attempts() == [(1, "accepted")]
@@ -216,6 +225,7 @@ async def test_what_the_tool_raises_settles_the_operation_interrupted_with_it(w)
     waits out its lease for nothing), or reported as ``not_executed`` when it had started."""
     queued = await w.enqueue()
     w.runner.raises = RuntimeError("the place file is locked")
+    w.runner.establishes = {"scripted-editor": "7.2"}
 
     async with Serving(w.worker) as serving:
         await serving.until(w.settled(queued.operation_id))
@@ -226,7 +236,38 @@ async def test_what_the_tool_raises_settles_the_operation_interrupted_with_it(w)
         "the tool raised while the operation ran: RuntimeError: the place file is locked"
     )
     assert result.records == ()
+    # #3236, read before the reset; the registry adds who served it (R5.32).
+    assert dict(result.ran_with) == {"scripted-editor": "7.2", "served_by": "macbook"}
     assert w.runner.resets == 2  # at start (#3046), then after the crash
+
+
+@pytest.mark.parametrize("ending", ["a cancel", "a raise"])
+async def test_a_tool_that_cant_say_what_it_ran_with_is_still_answered(w, ending):
+    """#3236. Bug caught: a ``running_with`` that raises taking the worker down with the claim
+    held, or an answer that hides it behind an empty ``ran_with`` with nothing said."""
+    queued = await w.enqueue()
+    w.runner.running_with_raises = OSError("the record is gone")
+    if ending == "a cancel":
+        w.runner.run_seconds = None
+    else:
+        w.runner.raises = RuntimeError("the place file is locked")
+
+    async with Serving(w.worker) as serving:
+        await serving.until(w.claimed(queued.operation_id))
+        if ending == "a cancel":
+            await w.registry.cancel(queued.operation_id)
+        await serving.until(w.settled(queued.operation_id))
+
+    result = (await w.stored(queued.operation_id)).result
+    # Nothing the run named; the registry's own word on who served it is still there (R5.32).
+    assert (result.status, dict(result.ran_with)) == (
+        OperationStatus.INTERRUPTED,
+        {"served_by": "macbook"},
+    )
+    assert result.reason.endswith(
+        "; what it ran with couldn't be read: OSError: the record is gone"
+    )
+    assert w.runner.resets == 2
 
 
 async def test_a_tool_that_cant_be_reset_runs_nothing_until_it_can(w):
