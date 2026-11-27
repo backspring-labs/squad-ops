@@ -1917,9 +1917,34 @@ back, never read as a stop while a real stop line still is; the two packaged ski
 under their own names; the budget counting the text. The existing tests hold every slotted template unchanged
 with no skills.
 
-**Not shown here: that the model now stops.** That is a replay under a new experiment id, on the deploy that
-carries this text, with its pass rule and its number of generations stated before it runs (the plan's item 9).
-Its record is added to this section when it has run.
+**Not shown by the tests: that the model now stops.** That is a replay under a new experiment id, on the deploy
+that carries this text, with its pass rule and its number of generations stated before it runs (the plan's item
+9). Its record follows.
+
+**The replay's record** (added 2026-11-27; #3240, comment 7214876429). Experiment
+`roblox-skills-v5-declared-stop`, played on the Spark from 02:19 to 04:33 ET on the deploy `dep_b82bc7ca90b5`
+(main at 590bfdad): the cases `roblox-skills@3`, the three envelopes of `roblox-skills-v4-revised-2`, seed 7,
+and five generations a case where the earlier replays had three. The rule was stated in PR #3276 before it ran.
+
+| The rule | Reading |
+|---|---|
+| Each of the two cases whose expectation is a stop stops in 5 of 5 skills-arm generations | 5 of 5 and 5 of 5, each opening with its declared stop and emitting no artifact. The case #3240 is about had read 3/3, 1/3, 3/3 and 2/3 over four replays at three generations |
+| No generation of either names a conflict with the task's requirements and then writes the artifact | None of the ten |
+| A stop read on a case whose expectation isn't a stop is a miss | None in 35 generations of the seven other cases |
+| Every case met in the last replay is still met by the rule it was read by then (§17p: two of three) | Five cases 5 of 5. Two cases 4 of 5 each, their one unmet generation a finding of its scenario rules and not a stop |
+
+So the rule is met, and #3240 is closed on it.
+
+**One fault in how the replay was run, and its repair.** It was run without `--product-checkout`, which the
+replay before it had. Two cases' rules read the product's checkout, so the tool's own `judged.jsonl` reads them
+as not judged in four generations each. Nothing was generated again. The stored results were judged a second time
+by the tool's own `judge_records`, with a checkout of the pinned commit kept outside this repository. Eight rows
+moved from not judged to met, and no other row changed. Both readings are kept beside each other in the records.
+**A skills replay names its product checkout,** or two of its cases can't be read.
+
+**What the replay doesn't show:** the one case that needs the product's specs run was not judged, here or in
+the replay before; it is one model, one seed and one capture; and no live cycle has met this text yet. The 2.9
+certification window's case 1 is where a strategy task does.
 
 **Who ruled.** The owner adopted the 2.9 plan on 2026-11-26, whose item 9 and ruling D4 state the rule. The Spark
 lane built it.
