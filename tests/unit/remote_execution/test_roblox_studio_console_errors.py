@@ -175,8 +175,17 @@ def test_this_plays_lines_are_read_by_exact_prefixes(before, early, after, this_
         ("edit\n", "start\n", "later\nlines\n"),
         # Not cleared, then rolled past what was there before.
         ("edit\n", "edit\nstart\n", "dit\nstart\nmore\n"),
+        # The Spark lane's case: not cleared, a capped console that dropped its head as one line
+        # was written between the first two reads. It reads like a cleared one, with an earlier
+        # play's ``b`` at its start.
+        ("a\nb\n", "b\nc\n", "b\nc\n"),
     ],
-    ids=["cleared-after-the-early-read", "rolled-after-a-clear", "rolled-without-one"],
+    ids=[
+        "cleared-after-the-early-read",
+        "rolled-after-a-clear",
+        "rolled-without-one",
+        "a-capped-console-that-kept-its-tail",
+    ],  # fmt: skip
 )
 def test_a_window_that_cant_be_established_is_none_never_everything(before, early, after):
     """The Spark lane's hardening: reading the whole console here could put an earlier play's

@@ -123,11 +123,23 @@ def this_plays_lines(before: str, early: str, after: str) -> Window:
     - Otherwise Studio cleared it as play started (an empty ``early`` is a cleared console).
       ``after`` is this play's whole console when it starts with ``early``.
     - Anything else, such as a console that rolled past this play's start, is unestablished.
+      So is an ``early`` that begins with whole lines ``before`` ends with: a capped console that
+      kept its tail and dropped its head reads like a cleared one, with an earlier play's lines
+      at its start (the Spark lane's review, 2026-11-27).
     """
     if early.startswith(before):
         if after.startswith(before):
             return Window("appended", tuple(after[len(before) :].splitlines()))
         return Window("unestablished", None)
+    if _kept_a_tail(before, early):
+        return Window("unestablished", None)
     if after.startswith(early):
         return Window("cleared", tuple(after.splitlines()))
     return Window("unestablished", None)
+
+
+def _kept_a_tail(before: str, early: str) -> bool:
+    """Whether ``early`` begins with one or more whole lines ``before`` ends with. An empty
+    ``early`` kept nothing: it is a cleared console with nothing yet written."""
+    held, began = before.splitlines(), early.splitlines()
+    return any(began[:n] == held[-n:] for n in range(1, min(len(held), len(began)) + 1))
