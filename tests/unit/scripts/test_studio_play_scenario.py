@@ -146,3 +146,33 @@ def test_a_result_without_the_identities_says_so(tmp_path, monkeypatch, capsys, 
 
     assert code == 1
     assert says in out
+
+
+@pytest.mark.parametrize(
+    ("errors", "says"),
+    [
+        ((), ["script_errors: none named"]),
+        (
+            (("src/Client/Main.local.luau", 6, "the client stops at start"),),
+            ["script_errors:", "  src/Client/Main.local.luau line 6: the client stops at start"],
+        ),
+    ],
+    ids=["none-named", "one-named"],
+)
+def test_a_hand_plays_output_says_what_script_errors_the_provider_read(
+    tmp_path, monkeypatch, capsys, errors, says
+):
+    """R5.32 (#3200). Bug caught: a hand play that hides whether its provider named an error, so
+    reading a setup failure live can't tell a named fault from a silent one."""
+    from squadops.remote_execution.models import ScriptError
+
+    result = RemoteOperationResult(
+        status=OperationStatus.COMPLETED,
+        ran_with=RAN_WITH,
+        dispatch_id="by-hand",
+        script_errors=tuple(ScriptError(*e) for e in errors),
+    )
+
+    _code, out, _runner = _play(tmp_path, monkeypatch, capsys, result)
+
+    assert all(line in out.splitlines() for line in says), out

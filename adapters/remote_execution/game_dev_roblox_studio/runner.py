@@ -48,7 +48,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
-from adapters.remote_execution.game_dev_roblox_studio import harness, place, play
+from adapters.remote_execution.game_dev_roblox_studio import console_errors, harness, place, play
 from adapters.remote_execution.game_dev_roblox_studio.front import (
     FrontPolicy,
     FrontRecord,
@@ -71,11 +71,13 @@ from adapters.remote_execution.game_dev_roblox_studio.vocabulary import VOCABULA
 from squadops.ports.remote_execution import OperationRunnerPort
 from squadops.remote_execution.held_lease import current as current_lease
 from squadops.remote_execution.models import (
+    RAN_WITH_ENVIRONMENT,
     AssertionRecord,
     EvidenceItem,
     OperationStatus,
     RemoteOperationRequest,
     RemoteOperationResult,
+    ScriptError,
 )
 from squadops.remote_execution.scenario import (
     Observation,
@@ -426,10 +428,16 @@ class RobloxStudioRunner(OperationRunnerPort):
             with stages.stage("baseline_before_s"):
                 before = await place.baseline(session, sid)
             self._establish({"place_baseline": before.digest[:16]})
+            # R5.32 (#3200): the console just before play starts and just after, so the lines
+            # this play wrote can be told from an earlier play's.
+            with stages.stage("console_s"):
+                console_before = await place.console(session, sid)
             with stages.stage("play_start_s"):
                 await place.start_play(session, sid)
             playing = True
             try:
+                with stages.stage("console_s"):
+                    console_early = await place.console(session, sid)
                 with stages.stage("scenario_s"):
                     records, log = await play.run_scenario(
                         session, sid, declaration, timed=_waits_into(stages)
@@ -478,6 +486,20 @@ class RobloxStudioRunner(OperationRunnerPort):
                                "evidence can't be redacted, and none are returned "
                                f"({play.why_not(player)})")  # fmt: skip
         redact = _redactor(player.value)
+        window = console_errors.this_plays_lines(console_before, console_early, console)
+        errors = _script_errors(window, request, redact)
+        # R5.32: the environment is named only by a play whose console was read as its own, so a
+        # play that couldn't read one is never compared with another.
+        self._establish(
+            {
+                "console_window": window.kind,
+                **(
+                    {RAN_WITH_ENVIRONMENT: _environment(files, proved)}
+                    if window.lines is not None
+                    else {}
+                ),  # fmt: skip
+            }
+        )
         return RemoteOperationResult(
             status=OperationStatus.COMPLETED,
             records=tuple(_redacted_record(r, redact) for r in records),
@@ -494,6 +516,7 @@ class RobloxStudioRunner(OperationRunnerPort):
             provider_version=f"{PROVIDER}@{PROVIDER_VERSION}",
             ran_with=self.running_with(),
             dispatch_id=request.dispatch_id,
+            script_errors=errors,
         )
 
     def _held_to_proof(self, check: ToolCheck, proved: ProvedOn) -> StudioIdentity:
@@ -922,6 +945,33 @@ class RobloxStudioRunner(OperationRunnerPort):
             return PlayRound(before.digest, len(before.lines))
         finally:
             await session.close()
+
+
+def _script_errors(
+    window: console_errors.Window, request: RemoteOperationRequest, redact: Callable[[str], str]
+) -> tuple[ScriptError, ...]:
+    """R5.32's provider fact: the first error this play's console names in a staged script, as
+    the request's file, or nothing. A console whose window can't be read names none."""
+    if window.lines is None:
+        return ()
+    staged = place.script_files(request.source_files)
+    found = console_errors.first_script_error("\n".join(window.lines), staged)
+    if found is None:
+        return ()
+    return (ScriptError(staged[found.script], found.line, redact(found.message)),)
+
+
+def _environment(files: PlaceFiles, proved: ProvedOn) -> str:
+    """R5.32's environment: equal for two plays only when all this provider holds fixed between
+    them is: the provider and its reader, the pinned place, the qualified Studio, the harness."""
+    held = {
+        "provider": f"{PROVIDER}@{PROVIDER_VERSION}",
+        "reader": VOCABULARY.reader,
+        "place": files.baseline_digest,
+        **proved.named("qualified"),
+        "harness": harness.digests(),
+    }
+    return hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def _waits_into(stages: PlayStages) -> Callable[[str, float], None]:
