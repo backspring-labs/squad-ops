@@ -624,14 +624,13 @@ class TestPublisherConfirms:
         from pamqp.commands import Basic
 
         monkeypatch.setattr(rabbitmq_mod, "_PUBLISH_RETRY_BACKOFF", 0)
-        returned = MagicMock(
-            delivery=Basic.Return(
-                reply_code=312, reply_text="NO_ROUTE", exchange="", routing_key="q"
-            )
-        )
+        frame = Basic.Return(reply_code=312, reply_text="NO_ROUTE", exchange="", routing_key="q")
+        returned = MagicMock(delivery=frame)
         channel = MagicMock(is_closed=False)
+        # As aiormq's channel raises it (`PublishError(message, frame)`): 7.2 reads the frame
+        # to describe the error, so one built without it can't say what it is (#3101).
         channel.default_exchange.publish = AsyncMock(
-            side_effect=aiormq.exceptions.PublishError(returned, None)
+            side_effect=aiormq.exceptions.PublishError(returned, frame)
         )
         queue = MagicMock(channel=channel)
         queue.name = "q"
@@ -644,3 +643,27 @@ class TestPublisherConfirms:
         calls = channel.default_exchange.publish.await_args_list
         assert len(calls) == rabbitmq_mod._PUBLISH_MAX_ATTEMPTS
         assert all(c.kwargs["mandatory"] is True for c in calls)
+
+    async def test_a_failure_that_cant_describe_itself_is_still_a_queue_error(
+        self, monkeypatch
+    ) -> None:
+        """#3101. Bug caught: a library exception whose ``str()`` raises (aiormq 7.2's returned
+        publish built without its frame did) escaping the retry as an ``AttributeError`` from
+        this adapter's own log line, so the caller never sees the publish fail as one."""
+
+        class Unsayable(Exception):
+            def __str__(self) -> str:
+                raise AttributeError("'NoneType' object has no attribute 'name'")
+
+        monkeypatch.setattr(rabbitmq_mod, "_PUBLISH_RETRY_BACKOFF", 0)
+        channel = MagicMock(is_closed=False)
+        channel.default_exchange.publish = AsyncMock(side_effect=Unsayable("NO_ROUTE", "q"))
+        queue = MagicMock(channel=channel)
+        queue.name = "q"
+        channel.declare_queue = AsyncMock(return_value=queue)
+        adapter = _make_adapter_with_channel(channel)
+
+        with pytest.raises(QueueError, match=r"Unsayable\('NO_ROUTE', 'q'\)"):
+            await adapter.publish("q", "{}")
+
+        assert channel.default_exchange.publish.await_count == rabbitmq_mod._PUBLISH_MAX_ATTEMPTS
