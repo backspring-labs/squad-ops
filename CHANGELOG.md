@@ -19,6 +19,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   - **The evaluator image is cut as `…ruff0.17-eslint10.12-9`.** Lighthouse, axe, ESLint, the driver and the
     Chromium pin are -8's. A lint reading on -8 or earlier stays its own series.
   - ruff 0.17.5 reformats no file in the repository.
+- **The Mac's quiet reading counts the worker and Studio by their executables** (#3292): a process whose command
+  line merely named the worker's module, such as the shell taking the reading, was counted as a second worker,
+  with its CPU and memory moved out of "other", which the certification window's host bar reads. The worker is
+  now a Python whose arguments run its module, and Studio, Docker and Ollama are read from the executable.
+
 - **A Studio play reads the place's state twice, not three times** (#3250, the 2.9 plan's item 13; SIP-0117
   R5.36): the read after the sync is gone. The sync writes only the synced folders, which the state read leaves out,
   so that read saw nothing the read after play doesn't. The pin check's own reading is the play's "before".

@@ -94,28 +94,41 @@ def models_loaded(text: str) -> list[str]:
     return [line.split()[0] for line in lines[1:]]
 
 
-def kind(args: str) -> str:
-    """Which named process a command line is, or ``other``. The line is read, never kept."""
-    if "RobloxStudio.app/" in args:
+#: The worker as its command runs it: a Python with these arguments (#3292).
+WORKER_ARGUMENTS = "-m squadops.remote_execution.worker_main"
+
+
+def kind(executable: str, args: str) -> str:
+    """Which named process this is, or ``other``, read from its executable (#3292): a shell whose
+    own command line merely names Studio or the worker's module is neither. The worker is a
+    Python whose arguments run its module. Neither text is kept."""
+    name = executable.rsplit("/", 1)[-1]
+    if "RobloxStudio.app/Contents/MacOS/" in executable:
         return "studio"
-    if "squadops.remote_execution.worker_main" in args or "worker_main.py" in args:
+    # Without case: a framework Python on macOS runs as ``Python.app/Contents/MacOS/Python``.
+    if name.lower().startswith("python") and WORKER_ARGUMENTS in args:
         return "worker"
-    if "Docker.app/" in args or "com.docker." in args:
+    if "Docker.app/" in executable or name.startswith("com.docker."):
         return "docker"
-    if "/ollama" in args.split(" ", 1)[0]:
+    if name == "ollama":
         return "ollama"
     return "other"
 
 
-def processes(ps: str) -> dict[str, dict[str, float | int]]:
-    """`ps -Ao pid=,pcpu=,rss=,args=`, summed by kind: how many, total CPU %, total resident MB."""
+def processes(ps: str, ps_args: str) -> dict[str, dict[str, float | int]]:
+    """`ps -Ao pid=,pcpu=,rss=,comm=` (each process's executable) with `ps -Ao pid=,args=` (its
+    arguments), joined by pid and summed by kind: how many, total CPU %, total resident MB."""
+    arguments = {}
+    for line in ps_args.splitlines():
+        pid, _, args = line.strip().partition(" ")
+        arguments[pid] = args.strip()
     totals = {name: {"count": 0, "cpu_percent": 0.0, "rss_mb": 0.0} for name in (*NAMED, "other")}
     for line in ps.splitlines():
         parts = line.split(None, 3)
         if len(parts) < 4:
             continue
-        _pid, cpu, rss, args = parts
-        bucket = totals[kind(args)]
+        pid, cpu, rss, executable = parts
+        bucket = totals[kind(executable, arguments.get(pid, ""))]
         bucket["count"] += 1
         bucket["cpu_percent"] = round(bucket["cpu_percent"] + float(cpu), 1)
         bucket["rss_mb"] = round(bucket["rss_mb"] + int(rss) / 1024, 1)
@@ -148,7 +161,11 @@ def reading(run: Run = run, now: Callable[[], datetime] = lambda: datetime.now(U
         "memory_free_percent": taken(lambda: free_percent(run(["memory_pressure"]))),
         "models_loaded": taken(lambda: models_loaded(run(["ollama", "ps"]))),
         "docker": docker(run),
-        "processes": taken(lambda: processes(run(["ps", "-Ao", "pid=,pcpu=,rss=,args="]))),
+        "processes": taken(
+            lambda: processes(
+                run(["ps", "-Ao", "pid=,pcpu=,rss=,comm="]), run(["ps", "-Ao", "pid=,args="])
+            )
+        ),
     }
 
 
