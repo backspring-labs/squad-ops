@@ -2,7 +2,8 @@
 did on Studio 0.747 (2026-11-14), from a world file given as ``argv[1]``.
 
 The world holds ``tools``, ``studios``, ``state``, ``trees`` (folder to nodes), ``scripts`` (path
-to text), optional ``silent`` (tools that never answer), ``errors_as_success`` (tools that answer
+to text), optional ``silent`` (tools that never answer; ``silent_in_play`` while play runs),
+``errors_as_success`` (tools that answer
 ``Error: …`` with ``isError`` false), ``page_cap`` (a page at least this long is answered as cut)
 and ``log`` (a file each tools/call name is appended to).
 
@@ -26,7 +27,9 @@ with its ``properties``, ``attributes``, ``gui`` states and ``value``, or ``unsu
 ``unreadable`` reasons; ``observe`` reads it as the harness's program answers. ``clicks`` maps a
 clicked path to the instances it changes (``{context: {path: instance}}``, ``null`` removing
 one); ``character_navigation`` puts the character at its point; ``input_errors`` lists the input
-tools that answer an error; ``console`` is the output log. Each input call's arguments are
+tools that answer an error; ``console`` is the output log. ``console_edit``, when given, is what
+the log holds in edit mode: Studio clears its console when play starts (read 2026-11-26).
+``console_reads_in_play`` answers successive reads in play, the last thereafter. Each input call's arguments are
 appended to ``input_log`` when the world names one.
 """
 
@@ -215,6 +218,18 @@ def execute_luau(args):
     return text(json.dumps(sync(payload)))
 
 
+def console():
+    """The output log as it reads now: ``console_edit`` in edit mode when given, since Studio
+    clears its console when play starts; in play, each of ``console_reads_in_play`` in turn and
+    the last thereafter (a console that rolls); otherwise ``console``."""
+    if world.get("mode") == "Edit" and "console_edit" in world:
+        return world["console_edit"]
+    reads = world.get("console_reads_in_play")
+    if world.get("mode") == "Play" and reads:
+        return reads.pop(0) if len(reads) > 1 else reads[0]
+    return world.get("console", "")
+
+
 def call(name, args):
     if name in world.get("errors_as_success", ()):
         return text("Error: Could not find any instances at path 'x'")
@@ -239,7 +254,7 @@ def call(name, args):
     if name == "execute_luau":
         return execute_luau(args)
     if name == "get_console_output":
-        return text(world.get("console", ""))
+        return text(console())
     return text(f"unknown tool {name}", error=True)
 
 
@@ -255,5 +270,8 @@ for line in sys.stdin:
         if "log" in world:
             with open(world["log"], "a") as f:
                 f.write(name + "\n")
-        if name not in world.get("silent", ()):
+        playing = world.get("mode") == "Play"
+        if name not in world.get("silent", ()) and not (
+            playing and name in world.get("silent_in_play", ())
+        ):
             reply(message_id, call(name, message["params"]["arguments"]))

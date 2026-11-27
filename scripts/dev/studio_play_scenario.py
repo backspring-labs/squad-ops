@@ -77,9 +77,22 @@ async def _main(repo: Path, scenario_file: Path) -> int:
               f"observed {record.observed}, expected {record.expected}")  # fmt: skip
     for line in ran_with_lines(result):
         print(line)
+    for line in script_error_lines(result):
+        print(line)
     for item in result.evidence:
         print(f"--- {item.name} ---\n{item.content[-1500:]}")
     return 0 if result.status.value == "completed" else 1
+
+
+def script_error_lines(result: RemoteOperationResult) -> list[str]:
+    """The script errors the provider read in this play's console (R5.32, #3200), each as the
+    staged file, its line and Studio's message, or that it named none."""
+    if not result.script_errors:
+        return ["script_errors: none named"]
+    return [
+        "script_errors:",
+        *(f"  {e.path} line {e.line}: {e.message}" for e in result.script_errors),
+    ]
 
 
 def ran_with_lines(result: RemoteOperationResult) -> list[str]:

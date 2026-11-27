@@ -20,7 +20,7 @@ import hashlib
 import json
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
 from adapters.remote_execution.game_dev_roblox_studio.session import (
@@ -262,6 +262,30 @@ def manifest_scripts(source_files: Mapping[str, str]) -> tuple[dict[str, ScriptT
     each file under a synced folder that isn't a script this provider places."""
     placed: dict[str, ScriptText] = {}
     unplaced: list[str] = []
+    for file_path, path, script in _placements(source_files):
+        if path is None or script is None:
+            unplaced.append(file_path)
+        else:
+            placed[path] = script
+    return placed, unplaced
+
+
+def script_files(source_files: Mapping[str, str]) -> dict[str, str]:
+    """Each script the manifest places, by its path in Studio, to the staged file it came from:
+    how an error Studio names in a script is read back to the request's tree (R5.32, #3200)."""
+    return {
+        path: file_path
+        for file_path, path, _script in _placements(source_files)
+        if path is not None
+    }
+
+
+def _placements(
+    source_files: Mapping[str, str],
+) -> Iterator[tuple[str, str | None, ScriptText | None]]:
+    """Each staged file under a synced folder: its path, and its script's path in Studio with its
+    text, or ``None`` for both when this provider doesn't place it."""
+    placed: set[str] = set()
     for file_path, text in sorted(source_files.items()):
         folder = next((s for s, d in SYNCED_FOLDERS.items() if file_path.startswith(d + "/")), None)
         if folder is None:
@@ -269,21 +293,21 @@ def manifest_scripts(source_files: Mapping[str, str]) -> tuple[dict[str, ScriptT
         relative = file_path[len(SYNCED_FOLDERS[folder]) + 1 :]
         suffix = next(((s, c) for s, c in SCRIPT_SUFFIXES if relative.endswith(s)), None)
         if suffix is None or "." in relative[: -len(suffix[0])]:
-            unplaced.append(file_path)
+            yield file_path, None, None
             continue
         parts = relative[: -len(suffix[0])].split("/")
         if parts[-1] == "init":
             # Script Sync: ``X/init.luau`` is the script ``X``, its siblings in ``X/`` its children.
             parts = parts[:-1]
             if not parts:
-                unplaced.append(file_path)  # an init file at a folder's root names no script
+                yield file_path, None, None  # an init file at a folder's root names no script
                 continue
         path = f"{folder}.{'.'.join(parts)}"
         if path in placed:
-            unplaced.append(file_path)  # ``X.luau`` beside ``X/init.luau``: two scripts, one name
+            yield file_path, None, None  # ``X.luau`` beside ``X/init.luau``: two scripts, one name
             continue
-        placed[path] = ScriptText(suffix[1], text)
-    return placed, unplaced
+        placed.add(path)
+        yield file_path, path, ScriptText(suffix[1], text)
 
 
 def differences(read: Mapping[str, ScriptText], manifest: Mapping[str, ScriptText]) -> list[str]:

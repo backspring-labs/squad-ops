@@ -35,6 +35,17 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   on 2026-11-26 one pull request was resolved three times, each a push and a full CI run. An id held in two
   files is refused, and a test refuses a row appended to the old file.
 ### Added
+- **A Studio play names the script error its console shows, and its environment** (#3200's Studio half; SIP-0117
+  R5.32): the provider fact the six conditions read. Before it, no Studio play could be attributed.
+  - The first error with a stack raised in a staged script is reported as that file, its line and Studio's
+    message, redacted. A failed module load's follow-ons, a probe's own command, a stack with no frame, an error
+    with no stack, and an infinite-yield warning are never reported.
+  - The console is read before play, just after it starts and at the scenario's end, since Studio clears it when
+    play starts. Only this play's lines are read, by exact prefixes. One whose window can't be read names no
+    error and no environment.
+  - `environment` is a digest of the provider, the pinned place, the qualified Studio and the harness, named only
+    when the window was read.
+
 - **Each stage of a Studio play is timed, and the worker's Mac can be read for how busy it is** (#3250, the 2.9
   plan's item 13, the instrument only): the certification window's matched sets need to know where a play's
   ~100 s goes before anything is cut.

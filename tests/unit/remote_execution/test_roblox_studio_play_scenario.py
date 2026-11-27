@@ -428,11 +428,22 @@ async def test_a_place_changed_through_play_proves_nothing(tmp_path):
 async def test_a_session_that_fails_after_play_began_is_interrupted_and_play_is_stopped(tmp_path):
     """Bug caught: a hung Studio call leaving play running (found live), so the next transaction
     syncs into a play session; or the failure read as ``not_executed``, as if play never began."""
-    world = _played(tmp_path, silent=["get_console_output"])
+    world = _played(tmp_path, silent_in_play=["get_console_output"])
 
     result = await _runner(world, call_seconds=1.0).run(_request())
 
     assert result.status is OperationStatus.INTERRUPTED
+    assert json.loads(world.read_text())["mode"] == "Edit"
+
+
+async def test_a_console_that_cant_be_read_before_play_runs_nothing_and_is_the_macs(tmp_path):
+    """R5.32 (#3200): the console is read before play starts, to tell this play's lines from an
+    earlier one's. A Studio whose console doesn't answer is this Mac's, and nothing is played."""
+    world = _played(tmp_path, silent=["get_console_output"])
+
+    result = await _runner(world, call_seconds=1.0).run(_request())
+
+    assert (result.status, result.tool_unready) == (OperationStatus.NOT_EXECUTED, True)
     assert json.loads(world.read_text())["mode"] == "Edit"
 
 

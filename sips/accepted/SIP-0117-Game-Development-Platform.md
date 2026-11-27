@@ -202,7 +202,8 @@ phases are in its own ledger.
 | A qualification names each tool whose definition changed: each tool's own digest in the record (schema `/3`), `tools_changed` beside the added and removed, the worker's refusal naming the tools that differ, and a comparison against an earlier record read as unavailable, never as no change (R5.31) | **shipped** | 2.9 (PR #3262, closing #3230) |
 | A result the worker builds itself names what its run had established: the cancel's and a raise's `interrupted` carry the runner's `running_with()`, read before the reset (R5.34) | **shipped** | 2.9 (PR #3277; #3236 tracks the live cancel round on real Studio) |
 | A candidate's own setup failure, the core: a play's result names the script errors its provider read, the registry writes who served it, and six conditions read from the cycle's records attribute a setup failure to the candidate, which then gets one correction in the run; the reading is kept either way, and anything else keeps its routing, not executed (R5.32) | **shipped** | 2.9 (PR #3275) |
-| A candidate's own setup failure, on Studio: the provider reads its console for script errors and names its environment (the MacBook lane), and the played diagnostic goes from baseline to attributed failure to repair to the same frozen scenarios passing (R5.32) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
+| A candidate's own setup failure, on Studio: the provider reads its console for script errors and names its environment (the MacBook lane; R5.32's Studio half) | **shipped** | 2.9 (PR #3288) |
+| A candidate's own setup failure, played: the diagnostic goes from baseline to attributed failure to repair to the same frozen scenarios passing (R5.32; the certification window's case 9) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
 | A dedicated worker brings Studio to the front: inside its declared window, after the idle threshold and a fresh read of human input, each activation and refusal recorded in `ran_with`, and anything uncertain a refusal (R5.33; the Spark lane wrote the rule and the MacBook lane built it) | **shipped** | 2.9 (PR #3269, closing #3193) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
@@ -1810,10 +1811,35 @@ the caller knows of the candidate's tree).
   correction to spend, three ways; a pin that can't be read. Five mutations each fail one.
 - The wire, the registry's stamp and the fixture provider's stand-in for a tool's log each have their own.
 
+**The Studio provider's half, as built** (the MacBook lane, 2026-11-27; `game_dev_roblox_studio/console_errors.py`,
+the runner's transaction).
+
+| Point | As built | Why |
+|---|---|---|
+| **The block** | The line before `Stack Begin` is the message, as Studio wrote it, and the first `Script '<path>', Line N[ - function f]` frame after it is where it was raised. No line is keyed on a level | Studio's console tool writes no `Error:`, `Info:` or `Warning:` prefix: 0 of about 580 lines across six stored consoles (2026-11-26), and none in tonight's reads on the Mac |
+| **What is skipped** | A block whose message is a failed module load's follow-on (`Requested module experienced an error while loading`), at every step up the require chain; one raised in the command a probe ran (`AssistantCommand`); one with no frame before `Stack End`; an error with no stack; and an engine warning with a stack, `Infinite yield possible on …` | The follow-ons name scripts that only required the faulty one. A warning isn't an error raised (ruled with the Spark lane, 2026-11-26) |
+| **What is reported** | The first block whose raising frame is a script the request staged, and only that one. A client script runs as the player's copy (`Players.<player>.PlayerScripts.…`), which is read as the script under `StarterPlayer.StarterPlayerScripts.…`. The script's path in Studio is read back to the staged file it came from (`place.script_files`), and a frame that maps to no staged file isn't reported | Core compares by staged file, so a path it can't hold is never guessed |
+| **Redacted** | The message passes through the session's player-name redaction before it is put on the result, as every record and log of the play does | A message names the runtime path, which names the player |
+| **This play's lines** | The console is read three times: before play starts, just after, and when the scenario has ended. If the read just after play started begins with the one before, the console wasn't cleared, and this play's lines are what follows it. Otherwise Studio cleared it at the start, and the last read is this play's whole console when it begins with the read just after the start. Anything else, such as a console that rolled past the play's start, is unestablished, and so is a read just after the start that begins with whole lines the read before ended with: a capped console that kept its tail reads like a cleared one, with an earlier play's lines at its start (the Spark lane's review). An empty read just after the start is a cleared console. Only exact prefixes are compared | Read on the Mac on 2026-11-26: Studio clears its console when play starts, and a play's console begins with the game's own start-up lines, which repeat play to play. A match on runs of lines could cut a play's start, where its start-up errors are |
+| **Unestablished** | No script error is named and **no `environment`**, so condition 2 fails for that reading on either side | The Spark lane's hardening: a window that can't be read never reads as "looked and found none" |
+| **`environment`** | A 16-hex digest of the provider and its reader, the pinned place's baseline digest, the qualified Studio's version, channel and tools, and the harness's digests. Named only on a play whose console window was established | An older worker names none, so its readings are never comparable, and its empty `script_errors` can't make condition 5 hold |
+| **`console_window`** | `ran_with` names how the window was read: `cleared`, `appended` or `unestablished` | So a reading with no `environment` says why |
+| **A console that can't be read before play** | Nothing is played, and the refusal is the Mac's (`tool_unready`), as a session that won't open is | The window needs the read |
+
+**Its tests** (`tests/unit/remote_execution/test_roblox_studio_console_errors.py`, entered at `RobloxStudioRunner.run`
+over the stand-in `StudioMCP`, which now models a console that play's start clears and one that rolls):
+- a console that names a staged script's error reports it as the staged file, redacted, and an earlier play's error in
+  the edit-mode log is never read as this one's;
+- a play with no staged error names none and names its environment, the same for two plays on one pin;
+- an error raised outside the staged tree, and each of the five skips, are never reported;
+- a console that rolled past the play's start names no error and no environment;
+- **end to end:** a baseline play and a candidate play whose setup failed with an error in the file it changed, read as
+  core keeps them, hold all six conditions, and the fault is attributed to that file.
+
+Five mutations each fail a test: the errors left off the result, the message unredacted, Studio's path kept, the
+edit-mode log read as the play's, and the environment named without a window.
+
 **Not in this amendment.**
-- **The Studio provider's half:** reading its console for script errors and naming its environment. The MacBook
-  lane builds and proves it on real Studio. Until it lands, a Studio play names no script error and no
-  environment, so no Studio play is attributed, and the routing is today's.
 - **The played diagnostic** of the plan's item 7 (baseline, attributed failure, repair, the same frozen
   scenarios passing), which needs both halves.
 - **A row-8 repair cycle's evidence** (#3272): the Campaign's repair is still sent no script error.
