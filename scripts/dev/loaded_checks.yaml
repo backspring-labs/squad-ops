@@ -2664,7 +2664,7 @@ checks:
       from squadops.capabilities.skillsets import ToolRequest
       from squadops.capabilities.tool_checks import unavailable
       tool = ToolRequest("play_scenario", "fixture-editor", "worker")
-      print(asyncio.run(unavailable(tool, worker_registry=object(), sandbox_client=None, remote_execution=None)))
+      print(asyncio.run(unavailable(tool, agent_id="eve", worker_registry=object(), sandbox_client=None, remote_execution=None, agent_report=None, agent_heard_from_now=True)))
     expect: "this runtime binds no remote execution (remote_execution.provider none)"
   - id: "3160-cancelled-run-asks-nothing"
     what: the scenario baseline step reads the run's status before it asks a provider

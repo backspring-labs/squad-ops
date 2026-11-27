@@ -37,6 +37,9 @@ class AgentStatusCreate(BaseModel):
     version: str | None = None
     # #1720: the commit the agent's image was built from (None when the build recorded none).
     revision: str | None = None
+    # #3235: the remote-execution provider the agent's own port binds (``none`` for no port).
+    # None from an agent built before agents reported it.
+    remote_execution: str | None = None
     tps: int = 0
     memory_count: int | None = None
     # Deprecated fields (ignored if present)
@@ -87,6 +90,7 @@ async def create_or_update_agent_status(
                     "current_task_id": agent_status.current_task_id,
                     "version": agent_status.version,
                     "revision": agent_status.revision,
+                    "remote_execution": agent_status.remote_execution,
                     "tps": agent_status.tps,
                     "memory_count": agent_status.memory_count,
                 }
