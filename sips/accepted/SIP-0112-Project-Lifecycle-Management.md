@@ -4126,9 +4126,15 @@ application's task takes the path it always took).
 **The replay the plan's done-when asks for.** The 2.8 counted run's two `qa.test` envelopes
 (`cyc_de850f1b65a6`, `cyc_e26c45c7747c`) were read through the new rule: each is shown exactly the files it
 was shown then, in the same order (4 files, 18,478 characters; 5 files, 19,330), under the cap. So their
-prompts are the ones the counted run sent, and the suites those prompts produced ran and were accepted in
-that run. No model was called for this: an identical prompt adds no reading a second generation would not
-repeat.
+prompts are the ones the counted run sent. No model was called for this: an identical prompt adds no reading
+a second generation would not repeat.
+
+**"The suite it writes runs, and tells the correct build from a broken one"** is on the counted run's own
+record, for the suites those prompts produced. Each cycle's implementation run stored a
+`criterion_head_check` (SIP-0109 §24cz, §24do): its criterion's spec was run by the product's own runner
+on the campaign branch's head, the tree without the run's work, and read `fails_on_head` there, in both
+cycles. The same spec then passed on the candidate, and each increment was accepted. A suite that fails
+without the work and passes with it is the reading the done-when asks for.
 
 **The existing stacks are unchanged.** A task with no product repository is scoped by `package_scoped` as
 before, and a test holds it. The existing stacks' shakeout pair on the final deploy (the plan's §6, case 14)

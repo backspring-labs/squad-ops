@@ -666,6 +666,27 @@ def test_a_products_suite_is_shown_what_is_beside_it_and_never_the_tree(inputs, 
     assert list(qa_test_prompt_contents(inputs)) == shown
 
 
+def test_a_runner_rooted_at_a_dot_directory_is_matched_by_its_own_files():
+    """From the MacBook lane's review. Bug caught: every leading dot stripped from a path, so
+    ``.tools/run.luau`` read as in ``tools`` while the runner's root read ``.tools``, and the
+    runner's own script was never shown; the same idiom scoped a sample application's
+    dot-directory suite to nothing, and then to the whole tree."""
+    from squadops.capabilities.qa_prompt_contents import package_scoped
+
+    tree = {
+        ".tools/run.luau": "-- runner\n",
+        ".tools/specs/A.spec.luau": "-- a\n",
+        "src/M.luau": "m",
+    }
+
+    product = _product(".tools/new/B.spec.luau", roots=(".tools",), tree=tree)
+    assert list(qa_test_prompt_contents(product)) == [".tools/run.luau"]
+    assert list(package_scoped(tree, ["./.tools/specs/B.spec.luau"])) == [
+        ".tools/run.luau",
+        ".tools/specs/A.spec.luau",
+    ]
+
+
 def test_a_sample_applications_suite_is_scoped_as_it_always_was():
     """The unchanged half: the same tree and task with no product repository. Bug caught: the
     product's rule applied to a sample application, whose prompts must not move."""

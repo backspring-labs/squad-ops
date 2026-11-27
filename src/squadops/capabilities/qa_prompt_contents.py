@@ -129,15 +129,13 @@ def package_scoped(
     (~18k tokens, every frontend .jsx included) into a backend suite task: prefill cost plus
     rambling pressure against the 8192 completion clamp, and the truncation crashed collection.
     No expected artifacts or no package match: contents unchanged (never starve the prompt)."""
-    packages = {
-        str(e).strip().lstrip("./").partition("/")[0] for e in (expected_artifacts or []) if e
-    }
+    packages = {_relative(e).partition("/")[0] for e in (expected_artifacts or []) if e}
     if not packages:
         return artifact_contents
     scoped = {
         name: content
         for name, content in artifact_contents.items()
-        if str(name).strip().lstrip("./").partition("/")[0] in packages
+        if _relative(name).partition("/")[0] in packages
     }
     return scoped or artifact_contents
 
@@ -172,18 +170,26 @@ def product_scoped(
     ``package_scoped`` is the sample applications' rule, whose top-level directories are a
     backend and a frontend. On a product it showed 137 files for a suite under ``src/`` and the
     whole tree, 234 files, when no directory matched (measured on #3182)."""
-    beside = {_directory(str(e)) for e in expected_artifacts or [] if e}
-    roots = {root.strip("/") for roots, _pattern in runners for root in roots} - {".", ""}
+    beside = {_directory(e) for e in expected_artifacts or [] if e}
+    roots = {_relative(root) for roots, _pattern in runners for root in roots} - {".", ""}
     return {
         name: content
         for name, content in artifact_contents.items()
-        if _directory(str(name)) in beside or _directory(str(name)) in roots
+        if _directory(name) in beside or _directory(name) in roots
     }
 
 
-def _directory(path: str) -> str:
+def _relative(path: Any) -> str:
+    """A path as the repository names it: no leading ``./`` and no slash at either end. A
+    leading dot that is part of a name is kept: ``.tools/run.luau`` is in ``.tools``, where
+    stripping every leading dot read it as ``tools`` (the MacBook lane's review of #3280), so
+    a runner rooted at a dot-directory never matched its own files."""
+    return str(path).strip().removeprefix("./").strip("/")
+
+
+def _directory(path: Any) -> str:
     """The directory a repository-relative path is in, or ``""`` for the repository's root."""
-    return path.strip().lstrip("./").rpartition("/")[0]
+    return _relative(path).rpartition("/")[0]
 
 
 def within_the_product_cap(
