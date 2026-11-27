@@ -112,6 +112,20 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     the stops the task's skills declare listed by their opening lines.
   - A task whose skills declare none, and every task with no skills, renders the prompt it rendered before.
   - Still to come under #3240: the replay that shows the model stops.
+- **The worker's checks guard every play that acts through Studio's input, not only an activation** (#3300;
+  SIP-0117 R5.37, the outside review's findings): with Studio already in front, the worker read no lock, idle
+  counter, console session or lease, and played; after its start-up reset that was the usual path.
+  - Every input play now reads them: on a dedicated worker R5.33's conditions 1 to 5, on any worker the lock and
+    the console session. The front is read once, with four outcomes, and a failed read refuses with nothing else
+    read.
+  - The activation brings forward the proved Studio by its process id (AppKit through `osascript`), which can't
+    start an app as `open -a` could. It is bounded by the lease's time left, and it runs off the serving loop's
+    event loop.
+  - Immediately before the first input action the lease, the window and the idle counter are read again, and
+    before each later one, and as a held key ends, the lock and the counter. A lock or a person's input stops
+    the play as the Mac's (`locked_during_play`, `input_during_play`), never as a failed criterion.
+  - The console session is read entry by entry, so two sessions can't answer for one. Every input play records
+    `front.input`, `permitted` or `refused`.
 - **On a product, a plan's `qa.test` names a file one of its runners collects** (#3182, the plan-gate half;
   SIP-0112 H.38; the 2.9 plan's item 8): a `qa.test` naming a source file or a note passed every plan gate,
   and its task was then shown most or all of the product to write a suite nothing runs.

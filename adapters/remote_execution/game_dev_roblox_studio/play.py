@@ -37,7 +37,7 @@ import math
 import re
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -133,9 +133,15 @@ async def run_scenario(
     *,
     timed: Callable[[str, float], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
+    before_input: Callable[[str], Awaitable[None]] | None = None,
+    after_input: Callable[[str], Awaitable[None]] | None = None,
 ) -> tuple[tuple[AssertionRecord, ...], PlayLog]:
     """The declaration run in the play session that is running now: its records and its log.
-    ``timed`` is told each action's name and how long it took (#3250), whether it held or not."""
+    ``timed`` is told each action's name and how long it took (#3250), whether it held or not.
+
+    ``before_input`` is awaited immediately before each input action, and ``after_input`` as
+    soon as a held key ends (R5.37). Whatever they raise stops the scenario and is raised from
+    here: nothing more is sent, and no record is made."""
     log = PlayLog(session_id=uuid.uuid4().hex)
     stopped = await _ready(session, studio_id)
     for phase, actions in (("setup", declaration.setup), ("steps", declaration.steps)):
@@ -145,7 +151,9 @@ async def run_scenario(
             entry: dict[str, Any] = {"action": action.action}
             getattr(log, phase).append(entry)
             try:
-                met = await _timed(session, studio_id, action, entry, timed, clock)
+                met = await _guarded_action(
+                    session, studio_id, action, entry, timed, clock, before_input, after_input
+                )
             except (ActionFailed, StudioSessionError) as e:
                 entry["failed"] = str(e)
                 stopped = f"{phase} {index + 1} ({action.action}) couldn't be done: {e}"
@@ -273,6 +281,26 @@ async def _do(
         entry["met"] = met
         return met
     raise ActionFailed(f"the harness runs no action {action.action!r}")  # read declarations can't
+
+
+async def _guarded_action(
+    session: StudioMcpSession,
+    studio_id: str,
+    action: Any,
+    entry: dict[str, Any],
+    timed: Callable[[str, float], None] | None,
+    clock: Callable[[], float],
+    before_input: Callable[[str], Awaitable[None]] | None,
+    after_input: Callable[[str], Awaitable[None]] | None,
+):
+    """One action, with R5.37's reads around it when it is an input action. What a read raises
+    is raised before the action is sent, or as soon as a held key ends."""
+    if action.action in STUDIO_INPUT_ACTIONS and before_input is not None:
+        await before_input(action.action)
+    met = await _timed(session, studio_id, action, entry, timed, clock)
+    if action.action == "hold_key" and after_input is not None:
+        await after_input(action.action)
+    return met
 
 
 async def _timed(

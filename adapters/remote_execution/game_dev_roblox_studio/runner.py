@@ -46,14 +46,15 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from adapters.remote_execution.game_dev_roblox_studio import console_errors, harness, place, play
 from adapters.remote_execution.game_dev_roblox_studio.front import (
     FrontPolicy,
     FrontRecord,
-    bring_studio_forward,
-    front_was,
+    InputGuard,
+    InputRefused,
+    permit_input,
 )
 from adapters.remote_execution.game_dev_roblox_studio.session import (
     StudioMcpSession,
@@ -398,15 +399,15 @@ class RobloxStudioRunner(OperationRunnerPort):
                     **({"qualified_by": proved.record[:16]} if proved.record else {}),
                 }
             )
+            guard: InputGuard | None = None
             if uses_input:
                 # R5.18 after R2.4 and R5.29 (R5.33's condition 6): the Studio a dedicated
-                # worker would bring forward is a proved one, already running.
+                # worker would bring forward is a proved one, already running. R5.37: read on
+                # every input play, whether or not Studio is in front.
                 with stages.stage("front_s"):
-                    front, refused = self._in_front(request)
-                if refused is not None:
-                    return refused
-                # Once read: a play cancelled from here on names how Studio came to the front.
-                self._establish(front.ran_with() if front is not None else {})
+                    front, guard = await self._permit()
+                if guard is None:
+                    return self._refused_input(request, front)
             with stages.stage("identity_s"):
                 studio = await place.identity(session, discover_seconds=self._discover_seconds)
             sid = studio.studio_id
@@ -443,26 +444,32 @@ class RobloxStudioRunner(OperationRunnerPort):
             with stages.stage("play_start_s"):
                 await place.start_play(session, sid)
             playing = True
+            stopped: InputRefused | None = None
             try:
                 with stages.stage("console_s"):
                     console_early = await place.console(session, sid)
                 with stages.stage("scenario_s"):
-                    records, log = await play.run_scenario(
-                        session, sid, declaration, timed=_waits_into(stages)
+                    records, log, stopped = await _scenario(
+                        session, sid, declaration, stages, guard
                     )
-                self._establish({"play_session": log.session_id})
-                with stages.stage("player_s"):
-                    player = await play.observe(
-                        session,
-                        sid,
-                        Observation("property", "client", {"path": "@player", "name": "Name"}),
-                    )
-                with stages.stage("console_s"):
-                    console = await place.console(session, sid)
+                if stopped is None:
+                    self._establish({"play_session": log.session_id})
+                    with stages.stage("player_s"):
+                        player = await play.observe(
+                            session,
+                            sid,
+                            Observation("property", "client", {"path": "@player", "name": "Name"}),
+                        )
+                    with stages.stage("console_s"):
+                        console = await place.console(session, sid)
             finally:
                 with stages.stage("stop_s"):
                     await place.stop_play(session, sid)
             playing = False
+            if stopped is not None and front is not None:
+                front = front.refusing(stopped.refused, stopped.reason)
+                self._establish(front.ran_with())
+                return self._refused_input(request, front, during=True)
             with stages.stage("baseline_after_s"):
                 after = await place.baseline(session, sid)
             with stages.stage("read_back_s"):
@@ -565,43 +572,60 @@ class RobloxStudioRunner(OperationRunnerPort):
     def _establish(self, facts: Mapping[str, str]) -> None:
         self._established.update(facts)
 
-    def _in_front(
-        self, request: RemoteOperationRequest
-    ) -> tuple[FrontRecord | None, RemoteOperationResult | None]:
-        """R5.18's check, with R5.33's activation before its refusal. Returns the front record
-        (``None`` when Studio was in front already) and the refusal, when there is one."""
-        behind = self._studio_behind()
-        if not behind:
-            return None, None
-        front = bring_studio_forward(
-            self._app,
-            self._front_policy,
-            lease=current_lease(),
-            was=front_was(self._app),
-            clock=self._clock,
-        )
-        if front.activated:
+    async def _permit(self) -> tuple[FrontRecord, InputGuard | None]:
+        """R5.37's check, recorded once read (a play cancelled from here on names how its input
+        was allowed), and the guard for the play's input actions, or ``None`` when refused."""
+        lease = current_lease()
+        front = await self._checked(lease)
+        self._establish(front.ran_with())
+        if not front.permitted:
             return front, None
-        return front, self._ended(
-            request,
-            OperationStatus.NOT_EXECUTED,
-            "nothing was run: the scenario acts through Studio's input, which acts only on a "
-            f"Studio in front, and {behind}. It wasn't brought forward: {front.reason}",
-            tool_unready=True,
-            ran_with=front.ran_with(),
+        guard = InputGuard(self._app, self._front_policy, lease=lease, idle_s=front.idle_last,
+                           clock=self._clock)  # fmt: skip
+        return front, guard
+
+    async def _checked(self, lease) -> FrontRecord:
+        """R5.37's check, off the serving loop's event loop: the serving loop runs this runner on
+        its own loop (``serving.Worker._serve_claim``: ``asyncio.ensure_future(self._runner.run(request))``), and
+        each read is a process the Mac answers, so a thread keeps the lease renewing meanwhile.
+        The proved Studio is the one process the proof read its channel from (R5.29)."""
+        return await asyncio.to_thread(
+            lambda: permit_input(
+                self._app,
+                self._front_policy,
+                proved_pid=self._proved_pid(),
+                lease=lease,
+                clock=self._clock,
+            )
         )
 
-    def _studio_behind(self) -> str:
-        """``""`` when a Studio is the app in front, or what is in front instead."""
+    def _proved_pid(self) -> int | None:
+        """The proved Studio's process: the one running, as the channel read just found it.
+        Two, none, or a read that fails is no proved process, so nothing is brought forward."""
         try:
-            front, studios = self._app.frontmost(), self._app.pids()
-        except OSError as e:
-            return f"which app is in front couldn't be read: {e}"
-        if front is None:
-            return "no app is in front"
-        if front not in studios:
-            return f"process {front} is in front, and Studio's are {studios or 'none'}"
-        return ""
+            pids = self._app.pids()
+        except OSError:
+            return None
+        return pids[0] if len(pids) == 1 else None
+
+    def _refused_input(
+        self, request: RemoteOperationRequest, front: FrontRecord, *, during: bool = False
+    ) -> RemoteOperationResult:
+        """R5.18's refusal, as R5.28 reads it: the worker's, never a criterion read as failed."""
+        if during:
+            reason = (
+                "the play was stopped and nothing more was sent: the scenario acts through "
+                f"Studio's input, and {front.reason}"
+            )
+        else:
+            reason = (
+                "nothing was run: the scenario acts through Studio's input, which acts only on a "
+                f"Studio in front with nobody's input at risk, and it wasn't permitted: {front.reason}"
+            )
+        return self._ended(
+            request, OperationStatus.NOT_EXECUTED, reason, tool_unready=True,
+            ran_with=front.ran_with(),
+        )  # fmt: skip
 
     def _ended(
         self,
@@ -981,6 +1005,39 @@ def _environment(files: PlaceFiles, proved: ProvedOn) -> str:
         "harness": harness.digests(),
     }
     return hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16]
+
+
+async def _scenario(
+    session: StudioMcpSession,
+    sid: str,
+    declaration: ScenarioDeclaration,
+    stages: PlayStages,
+    guard: InputGuard | None,
+) -> tuple[tuple[AssertionRecord, ...], play.PlayLog | None, InputRefused | None]:
+    """The scenario, or the R5.37 read that stopped it (point 6: nothing more is sent, and what
+    was read isn't evidence)."""
+    try:
+        records, log = await play.run_scenario(
+            session, sid, declaration, timed=_waits_into(stages), **_guarded(guard)
+        )
+    except InputRefused as r:
+        return (), None, r
+    return records, log, None
+
+
+def _guarded(guard: InputGuard | None) -> dict[str, Any]:
+    """``run_scenario``'s reads around input actions (R5.37), each off the event loop: the lock
+    and the idle counter are processes the Mac answers."""
+    if guard is None:
+        return {}
+
+    async def before(action: str) -> None:
+        await asyncio.to_thread(guard.before, action)
+
+    async def after(action: str) -> None:
+        await asyncio.to_thread(guard.after, action)
+
+    return {"before_input": before, "after_input": after}
 
 
 def _waits_into(stages: PlayStages) -> Callable[[str, float], None]:
