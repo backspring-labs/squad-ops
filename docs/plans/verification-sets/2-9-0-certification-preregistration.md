@@ -800,3 +800,114 @@ was made.
   (`host_quiet_reading.py`, `measured_play_set.py`), and documents. None is loaded by the runtime or an agent,
   so the deploy is not superseded. The worker's checkout carries the first of them and the Spark's tool the
   second.
+
+### 13f. The outside review: rehearsal 2 runs whole, the worker's checks guard every input play, and the claims are narrowed (2026-11-27)
+
+**What changed.** The outside review (D14) read the activation rule (#3269) and this registration (#3283) with
+§13a to §13e, and asked for corrections before any counted run. This amendment takes them. Points 1 to 3 change what
+runs. Points 4 to 9 change what the record must show. Nothing counted has run, so no result is re-judged.
+
+**Who ruled.** The owner, on 2026-11-27, on the review and the Spark lane's assessment of it: "Yes, go ahead with
+the fixes and 13f." The review's findings are the reviewer's. This text is the Spark lane's, and the MacBook lane read
+it before it was registered. Where the Spark lane departed from the review, it says so below, with the reason.
+
+1. **Rehearsal 1 is a partial rehearsal, and 13e's point 1 is withdrawn.** §6 asks for one rehearsal of cases 1, 2,
+   5, 6, 8, 9, 10 and 11 that passes whole. Rehearsal 1 ran seven of them on a Mac that wasn't quiet, and 13e read
+   that as the exit rule met. That reading was the Spark lane's, and the review holds §6 to its text. So:
+   - rehearsal 1 stays on the record as partial and uncounted, with what each of its seven cases read;
+   - **rehearsal 2** runs all eight cases, one after another, on one deploy and one worker checkout. The four
+     dedicated values must be written by the owner, the Mac quiet by §3's check 5 for its whole length, and the
+     worker the corrected one from point 2;
+   - rehearsal 2 is the last the budget allows. A third is the owner's to allow (D16);
+   - a case that fails in rehearsal 2 for a defect in a 2.9 item supersedes the deploy or the worker's checkout, as §2
+     says. No case of the window runs until a rehearsal has passed whole.
+2. **The worker's checks guard every input play (SIP-0117 R5.37, #3300).** The review found that R5.33's
+   conditions are read only when Studio is behind, so a locked screen or a person at the keyboard didn't stop a play
+   with Studio already in front, and that nothing is read during a play. R5.37 moves the checks from the activation
+   to the input. Its tests are at the runner and through `Worker.serve()`. The window and rehearsal 2 run on a
+   worker checkout that carries it, and every result names that checkout's commit (`source_revision`).
+3. **Two new owner-present variants,** in the same sitting as cases 3 and 4, each one queued play, as 13e's point 3:
+   - **Case 3b, input during a play.** Studio is in front and the Mac idle. The MacBook lane tells the owner when
+     the play's first input action has been sent, and the owner then moves the pointer or types. *Passes when* no
+     input action is sent after the owner's input is read, the result reads `not_executed`, `tool_unready` and
+     `front.refused` `input_during_play`, and no assertion reads as failed. If R5.37's measurement shows the idle
+     counter can't tell the play's own input from a person's, case 3b is not run, and the record says that input
+     during a play is not detected.
+   - **Case 4b, a lock with Studio already in front.** Studio is in front when the owner locks the screen. *Passes
+     when* nothing is sent, the result reads `not_executed`, `tool_unready` and `front.refused` `locked`, and the
+     screen is still locked when the owner returns. This is the path the review found unguarded. Case 4 keeps its own
+     variant, with another app in front.
+
+   §7's cases 3 and 4 otherwise stand.
+4. **Cases 3, 4, 3b and 4b prove the worker's refusal, not a Campaign's retry.** Their plays are queued alone, so
+   no increment waits on them. The record cites the wiring tests that hold `tool_unready` to rows 10 and 11's retry,
+   never a repair, by name, and doesn't present the single plays as evidence of it.
+5. **A negative assertion cites the test that proves its enforcement.** A clean window shows only that nothing
+   forbidden happened, not that it would have been refused. The record names, beside each of §8's negative
+   assertions and cases 6 and 8's, the tests that submit the forbidden thing and see it refused:
+   - a late result after another session reclaimed the operation (`tests/unit/remote_execution/remote_path.py`);
+   - a late result never satisfying a newer attempt, and the same result submitted twice being answered once
+     (`tests/unit/remote_execution/registry_contract.py`);
+   - a result after a cancel being kept and being no evidence (the same file);
+   - a cancel racing a completion, in both orders: a result that settled before the cancel stands, and one that
+     arrives after it is kept and is no evidence (the same file).
+
+   **Case 5's moved tool list** is cited the same way, from `tests/unit/remote_execution/test_roblox_studio_requalification.py`.
+   A live Studio version change is not forced to make it happen. The record keeps the live restart and the tested
+   refusal apart, and presents neither as the other.
+6. **The supervisor's bar is shown to refuse.** The Spark lane writes this registration and rules the gates, so the
+   review asked for evidence that the gate refuses a plausible but non-discriminating proposal. Rehearsal 1 holds
+   two such refusals, both of the squad's own proposals and both by §5's bar: step B's first proposal and step D's
+   second. They are cited. And before the window, a **blind control** runs outside any Campaign:
+   - the MacBook lane writes six change requests in the shape the proposer emits, for the window's two backlog
+     items. Some are sound, some carry one of §5's three shapes, and some carry a subtler fault, a check that a
+     broken build passes;
+   - it keeps them, and which is which, out of the repository, since they name the product;
+   - the Spark lane rules each by §5's bar without being told the mix;
+   - the MacBook lane then scores the rulings, and the record gives the counts: sound approved, faulted returned,
+     and every miss named by its shape.
+
+   *The departure from the review:* the review asked for the control to be submitted at the gate. A change request
+   placed in a Campaign by hand is §9's edit of a proposal, which voids the case it touches. So the control is ruled
+   on paper, by the same bar and the same ruler, and the record says so. A miss in it doesn't stop the window. It is
+   reported beside the window's rulings, so a reader can weigh them.
+7. **The throughput claim is the registered scenario's.** Case 13's 20% is a reduction in the matched scenario's
+   median, on the conditions 13a and 13d fix, and the record claims nothing wider. Beside the median and p95 it gives:
+   - all twenty plays of each set, with each stage's time;
+   - the spread;
+   - a bootstrap interval for the reduction in the median (10,000 resamples of each set, the seed recorded);
+   - the four host readings, each against both the 2.0 bar and 13d's 2.5;
+   - the worker's checkout and the deploy for each set;
+   - the window's Campaign plays' times, described and not compared.
+8. **Isolation names what was reused.** Case 12's record names, for each step of its sequence:
+   - the Studio process and the session, so a reader can see that the steps meant to share a session shared one;
+   - each reset, and when it ran.
+
+   A step that passed on a fresh process where it claims a reused one doesn't pass. R5.36's lost corner, a change
+   made during the sync and undone before play ends, is a limit of what the runner detects. The record names it, and
+   no test is built to show it, since it is the design's stated give and not a defect.
+9. **Every Campaign reports its time.** Beside case 1's outcome:
+   - the elapsed time, the time spent building and playing, and the time waiting on a ruling or an operator;
+   - each pause and retry;
+   - how much fell past the 2.8 limit of 7,200 s.
+
+   A Campaign that finished only because 13c doubled the limit is reported as such.
+
+**Added to §11 (what the evidence doesn't cover):**
+- the lesson, by point C1 of the review. Each accepted increment's record names the lesson supplied to its proposer.
+  The record doesn't describe these increments as evidence of the squad's ability to build, only of the worker's and
+  the runtime's handling of them;
+- `move_to`, as 13e's point 7;
+- input during a play, if point 3's measurement means case 3b isn't run;
+- R5.36's lost corner, as point 8;
+- the blind control's misses, if there are any.
+
+**The record keeps the evidence apart.** The cut record sorts each claim by what shows it:
+- a live Campaign;
+- a fault injected on purpose;
+- a wiring or regression test;
+- not shown at all;
+- shaped by a supplied lesson;
+- limited to the registered scenario.
+
+It lists every departure from this registration with who ruled it. No claim is shown in a class it wasn't shown in.

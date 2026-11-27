@@ -210,7 +210,7 @@ phases are in its own ledger.
 | U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the engine boundary generalizes | **unplaced**, deliberately: after Roblox | — |
 | B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for Roblox (R2.10) | — |
 
-**What closes this SIP:** phases 2a–2e and R5.7's rows shipped (Roblox integration works), the 2.9 plan's two rows
+**What closes this SIP:** phases 2a–2e and R5.7's rows shipped (Roblox integration works), the 2.9 plan's rows
 shipped, then G-1 and U-1 shipped or dropped by a numbered amendment. B-1 is optional. "The squad can build and improve a playable game" is the companion's to close
 (R2.10).
 
@@ -2052,6 +2052,114 @@ their existing tests.
 
 **Who ruled.** The two lanes, under the owner's grant of 2026-11-26 for the 2.9 line: the Spark lane froze the
 matched set and read the design, and the MacBook lane built it. It narrows no done-when and changes no claim.
+
+## R5.37 The checks that guard a person hold for every input play, not only for an activation (#3300, 2026-11-27; R5.18, R5.28, R5.29, R5.33; the 2.9 plan's D14)
+
+**What changed.** R5.33 read its conditions only when Studio was behind and the runner meant to bring it forward.
+When Studio was already in front, nothing was read: not the lock, not the idle counter, not the console session,
+not the lease. After the worker's start-up reset, Studio is in front, so that was the common path. And nothing was
+read after the checks, so a person who arrived, or a screen that locked, during a play didn't stop its input.
+R5.33's guarantee was a guarantee about the activation; what the person needs is a guarantee about the input.
+This rule moves the checks from the activation to the input. R5.33's conditions, its activation and its record
+stand, except where a point below changes them.
+
+**The evidence.** The outside review of #3269 (D14, read 2026-11-27), each finding confirmed by the Spark lane in
+the code at `8e586529` before it was written here:
+- `RobloxStudioRunner._in_front` returns as soon as Studio is in front, before any condition is read
+  (`runner.py:573-575`);
+- the activation is `open -a`, which starts an app that isn't running (`studio_app.py:183`). The read after it
+  refuses the play, but the launch has happened;
+- a failed read of the front became a reason, and `bring_studio_forward` was then called with a second read;
+- the lease was read once, before the activation;
+- `session_available_in` asked whether any session was on the console and whether any session had finished logging
+  in (`studio_app.py:206`), which two different sessions can answer;
+- a play with Studio already in front carried no `front.*` key.
+
+**The rule.**
+
+1. **Every play with an input action reads the conditions, whether or not Studio is in front.**
+   - *On a dedicated worker:* R5.33's conditions 1 to 5 are read in their order for every play whose scenario has
+     an input action (`click_gui`, `hold_key`, `move_to`). The conditions are the window, the lease, the idle
+     counter, the lock and the session, then the idle counter again. Studio already in front skips the activation,
+     and only the activation.
+   - *On a worker that isn't dedicated:* R5.18 is unchanged, except that the lock and the console session are read
+     for every input play. A locked screen is never played on, dedicated or not. The idle counter isn't held to a
+     threshold there, because a worker that isn't dedicated runs attended by its definition.
+2. **The front is read once, with four outcomes:** Studio, another app, none, or a read that failed. A failed read
+   refuses with `read_failed`, and nothing after it is read. No later read authorizes a play that an earlier read
+   couldn't.
+3. **The activation can't start an app.** It brings forward the running Studio that R2.4 and R5.29 proved, by that
+   process's id, through a call that acts on a running process and has no path that launches one. Studio's process
+   ids are still read before and after it, and a changed set still refuses. *If no such call exists on the Mac
+   without a change to its settings or permissions* (the owner's standing ruling: no host setting beyond the
+   worker's own), the activation stays `open -a` with the reads either side. R5.33's "the activation never starts
+   Studio" then reads "an activation that started Studio is refused", and the cut record says so. The MacBook lane
+   reports which, and the as-built table below names it.
+4. **Authority is read again before input.** Immediately before the first input action, after the activation or
+   after the already-in-front check, the lease and the window are read again. Either one not holding refuses, as
+   condition 2 or 1 refuses. The activation's own call is bounded by the lease's remaining time, and a cancel that
+   arrives during it is the cancel's (R5.30), never an activation's refusal.
+5. **The console session is read entry by entry.** The system's list of console users is read as entries. The
+   session is available only when exactly one entry is on the console and that same entry has finished logging in.
+   No entry, two on the console, or a contradiction within one entry is `session_unavailable`.
+6. **During the play.** Immediately before each input action after the first, the lock and the idle counter are
+   read. A locked screen stops the play: nothing more is sent, and the result is `not_executed` with `tool_unready`
+   and `front.refused` `locked_during_play`. A counter lower than the runner's previous reading means a person's
+   input, and stops the play the same way, with `input_during_play`.
+   - *What this needs first:* the scenario's own input mustn't move the counter. The MacBook lane measures whether
+     a `click_gui` and a `hold_key` reset macOS's idle counter. If they don't, the rule is as written. If they do,
+     only the lock is read during the play, input during a play is not detected, and the cut record says so. The
+     measurement goes in the as-built table either way.
+   - *A held key* is read before the hold starts and as soon as it ends. A person arriving during a hold is seen at
+     its end, at most the hold's length later (20 s in the window's scenarios), and nothing after it is sent.
+   - *What a stop is:* the assertions already read are not evidence. A play stopped by either reading is the
+     worker's refusal, retried by rows 10 and 11 (R5.28), and never a criterion read as failed.
+7. **Every input play records why it was allowed.** `ran_with` carries the `front.*` keys on every play with an
+   input action, not only when Studio was behind:
+   - `front.input`, either `permitted` or `refused`;
+   - `front.activated`, which is `false` when Studio was already in front;
+   - `front.was`;
+   - `front.idle_s`, on a dedicated worker;
+   - `front.refused`, on a refusal.
+
+   The closed list of refusals gains `locked_during_play`, `input_during_play` and, from point 4,
+   `lease_not_held_before_input` and `outside_window_before_input`. Still no app's name, window title or anything
+   about what the person was doing.
+
+**What is not added.** No new authority, no new setting, and no change to the scenario vocabulary. The four
+settings are still the owner's to write.
+
+**Who ruled.** The owner, on 2026-11-27, on the outside review and the Spark lane's assessment of it: "Yes, go
+ahead with the fixes and 13f." The text is the Spark lane's, written before the build, so the lane that takes the
+front doesn't write its own safety rule. The build is the MacBook lane's.
+
+**The tests the rule requires,** entered at `RobloxStudioRunner.run` over the stand-in, with the app, clock,
+counter, lock, session and activation as fakes. Each asserts the status, `tool_unready`, the `front.*` keys,
+whether the activation was called and whether any input was sent:
+
+1. Studio already in front with the screen locked: no input, `locked`.
+2. Studio already in front with the counter under the threshold: no input, `idle_below_threshold`.
+3. Studio already in front, idle, unlocked, inside the window: the play runs, `front.input` `permitted`,
+   `front.activated` `false`.
+4. The counter dropping between the activation and the first input action: no input, `input_before_activation`
+   (the check before input re-reads it).
+5. A lock read before the second input action: the first action was sent, the second wasn't, `locked_during_play`.
+6. The lock or the session unreadable, with Studio in front: `read_failed`, no input.
+7. A worker that isn't dedicated, Studio in front, the screen locked: no input, `locked`. And the same worker
+   unlocked: the play runs as today.
+8. A failure injected into the first front read: `read_failed`, no activation, no input, and no second read.
+9. Studio gone before the activation: no launch call made. The process set changing during it: refused. Studio
+   running: exactly one activation call. An activation that fails: no retry and no other call.
+10. Two Studios running: only the proved one is brought forward, or the play is refused.
+11. The lease's expiry passing during the activation, and the window closing during it: refused before input with
+    point 4's refusal. A cancel during the activation: the cancel's `interrupted`.
+12. A synthetic console-user list with two users, one on the console and the other logged in: `session_unavailable`.
+13. Wiring, through `Worker.serve()` with the registry in process: a play claimed with Studio already in front and
+    the screen locked sends no input and is answered `tool_unready`.
+14. If point 6's measurement shows the counter is moved by the scenario's own input: a test that the counter isn't
+    read during the play, so the play can't refuse itself.
+
+Each check removed in turn fails a test.
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
 
