@@ -27,12 +27,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   files is refused, and a test refuses a row appended to the old file.
 
 ### Fixed
-- **The Spark's GPU containers come back after a reboot that renumbers the GPU's card** (#3251): the
-  `local-spark` bootstrap wrote the CDI spec once, and the spec names the GPU's `/dev/dri` card by number. On
-  2026-11-23 the GPU came up under another number, and the squad's LLM server and the GPU exporter stayed down.
-  - The bootstrap now installs a `docker.service` drop-in that regenerates the spec whenever Docker starts
-    (`scripts/bootstrap/host/docker-nvidia-cdi.conf`). A failure keeps the old spec and never blocks Docker.
-  - `squadops doctor` checks that every device node the spec names exists, and that the drop-in is installed.
+- **A stop a skill declares outranks the task's own requirements** (#3240; SIP-0116 §17aa; the 2.9 plan's
+  item 9): the skills section ranked every part of a skill below the task's requirements, so a task asked for
+  exactly one file could settle a skill's stop against itself and write the artifact the stop exists to
+  prevent. One replay generation in three did, and cited that sentence.
+  - The section now names a declared stop as the exception, beside the ordering and again where it ends, with
+    the stops the task's skills declare listed by their opening lines.
+  - A task whose skills declare none, and every task with no skills, renders the prompt it rendered before.
+  - Still to come under #3240: the replay that shows the model stops.
 - **On a product, a plan's `qa.test` names a file one of its runners collects** (#3182, the plan-gate half;
   SIP-0112 H.38; the 2.9 plan's item 8): a `qa.test` naming a source file or a note passed every plan gate,
   and its task was then shown most or all of the product to write a suite nothing runs.
@@ -70,6 +72,19 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   - The worker's refusal names the tools that differ: `(changed script_read)`, with added and removed beside it.
   - A pin written under `/2` still pins. Against it the comparison reads unavailable, and the record that
     replaces it holds `tools_changed: null`, never an empty list.
+- **Every view of a cycle reads the same status and names the same ending** (#3224, #3244; the 2.9 plan's
+  item 3):
+  - **The list's status filter reads what the cycle's own row reads** (#3224). It read the latest run alone,
+    so `squadops cycles list --status completed` returned a cycle whose gate had rejected its plan and whose
+    row read `failed`, and left out of `--status active` a cycle waiting between workloads. Both registries
+    now filter by the one reading, `lifecycle.cycle_reading`: the recorded ending first, then the runs and the
+    workload progress. A batch still costs a fixed number of reads.
+  - **A one-workload cycle names its ending** (#3244). A Campaign's repair or retry cycle ends
+    `single_workload_ended`, and its row read `recorded_ending: null`, so an ended repair cycle couldn't be told
+    from one never ended. The row now names it, with the status of the run it names. A run cancelled on a cycle
+    not itself marked cancelled read `created`; it reads `cancelled`.
+  - The workload-progress alignment and the reading moved from the API's mapping into `cycles/lifecycle.py`,
+    so the route, the list and the registries share one definition.
 - **A recorded artifact the vault can't return ends the run by name** (#3128, the 2.9 plan's item 4): the
   executor's reads inside a run caught a failed retrieval, logged it and went on. The run then continued without
   its plan, its skeleton, a checkpoint's file or a seed, and a PRD that couldn't be read was handed to every
@@ -92,6 +107,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     that a run reaches, end the run `infrastructure_failed` with the same classifications. They ended it `other`.
   - A guard, `tests/unit/architecture/test_executor_vault_reads_are_declared.py`, refuses a bare
     `vault.retrieve` or a `retrieve_or_absent` in `squadops.execution`.
+- **The Spark's GPU containers come back after a reboot that renumbers the GPU's card** (#3251): the
+  `local-spark` bootstrap wrote the CDI spec once, and the spec names the GPU's `/dev/dri` card by number. On
+  2026-11-23 the GPU came up under another number, and the squad's LLM server and the GPU exporter stayed down.
+  - The bootstrap now installs a `docker.service` drop-in that regenerates the spec whenever Docker starts
+    (`scripts/bootstrap/host/docker-nvidia-cdi.conf`). A failure keeps the old spec and never blocks Docker.
+  - `squadops doctor` checks that every device node the spec names exists, and that the drop-in is installed.
 - **A gate that can't read its recorded input ends the cycle as the environment's** (#3128; SIP-0109 §24ei;
   the 2.9 plan's item 4): five reads at the gate between workloads read an artifact the vault couldn't return as
   one that wasn't there. The gate then found "no plan" or "no manifest", rejected the plan, and the squad re-rolled

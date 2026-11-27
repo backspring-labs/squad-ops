@@ -235,3 +235,60 @@ def test_the_qa_skill_declares_no_stop_and_says_what_comes_first_instead():
 
     assert skill_stops(md) == ()
     assert "**The product's own specs come first.**" in md
+
+
+# --- #3240 (§17aa): a stop is the model's whole answer -------------------------------------------
+
+_ARTIFACT = "```yaml:change_request.yaml\nproposal_id: p\n```"
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "- `no scenario:` — when the criterion can't be observed, this applies.",
+        "`no scenario:` doesn't apply here: the title screen is observable.",
+        f"`no scenario:` doesn't apply here: the title screen is observable.\n\n{_ARTIFACT}",
+        "I checked `No Scenario:` against the criterion, and it shows on screen.",
+    ],
+    ids=[
+        "the section's list, annotated",
+        "the stop said not to apply",
+        "said not to apply, then the artifact",
+        "mentioned mid-sentence, another case",
+    ],
+)
+def test_a_line_that_names_the_opening_without_using_it_is_no_stop(answer):
+    """From the MacBook lane's review of #3276, measured on main: each of these read as a stop.
+    Bug caught: a task that weighed its skill's stop, said it didn't apply and did the work,
+    read as having refused the work, with its artifact set aside."""
+    assert read_stop(_handed("no scenario:"), answer) is None
+
+
+def test_an_answer_that_also_emits_a_file_has_not_stopped(caplog):
+    """A stop is the whole answer. Bug caught: the first line that opens with a stop's words
+    taken as the answer, though the reply goes on to write the task's artifact."""
+    answer = f"no scenario: doesn't apply here, the label is text.\n\n{_ARTIFACT}"
+
+    with caplog.at_level("WARNING"):
+        assert read_stop(_handed("no scenario:"), answer) is None
+
+    assert "also emits a file, so it is read as the file's" in caplog.text
+    assert "no scenario: doesn't apply here, the label is text." in caplog.text
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        f"`{_STOP_LINE}`",
+        f"I can't write this one.\n\n- `{_STOP_LINE}`\n",
+        # A fence with no file name emits nothing: the line quoted in one is still the stop.
+        f"```\n{_STOP_LINE}\n```",
+    ],
+    ids=["the whole line in inline code", "in a list", "in a plain fence"],
+)
+def test_a_real_stop_is_still_read_under_the_two_new_readings(answer):
+    """The other direction. Bug caught: the mention rule passing over a stop the model wrote
+    in inline code, reason and all, so the task goes on to parse an answer with no artifact."""
+    stop = read_stop(_handed("no scenario:"), answer)
+
+    assert stop is not None and stop.line == _STOP_LINE

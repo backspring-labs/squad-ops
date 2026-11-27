@@ -1,0 +1,16 @@
+checks:
+  - id: "3240-declared-stop-outranks"
+    what: the strategy agent's skills section says a stop its skills declare comes before the task's own requirements, lists the opening, and its own text is never read as a stop (SIP-0116 §17aa)
+    container: squadops-nat
+    code: |
+      import asyncio
+      from adapters.prompts.factory import create_prompt_asset_source
+      from squadops.capabilities.handlers.skills import skills_section
+      from squadops.capabilities.skill_stops import read_stop
+      from squadops.capabilities.skillsets import SKILLS_INPUT, load_skillsets
+      from squadops.prompts.renderer import RequestTemplateRenderer
+      files = dict(load_skillsets()["roblox-increment-design"].skill_files["play-scenario-authoring"])
+      handed = [{"skillset": "roblox-increment-design", "version": 1, "skill": "play-scenario-authoring", "digest": "d", "files": files}]
+      section = asyncio.run(skills_section(RequestTemplateRenderer(create_prompt_asset_source("filesystem")), {SKILLS_INPUT: handed}))
+      print("The one exception is a stop a skill declares" in section, "- `no scenario:`\n" in section, "does not apply to a task that stops: emit none" in section, read_stop(handed, section) is None)
+    expect: "True True True True"

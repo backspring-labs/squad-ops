@@ -1152,6 +1152,127 @@ class TestListCyclesPages:
         assert paged.get(f"/api/v1/projects/hello_squad/cycles{query}").status_code == 422
 
 
+_TWO_WORKLOADS = {"workload_sequence": [{"type": "framing", "gate": "plan"}, {"type": "implementation"}]}  # fmt: skip
+
+
+class TestTheStatusFilterAgreesWithEachCyclesOwnRow:
+    """#3224 and #3244 (the 2.9 plan's item 3). Entered at the HTTP list route over a real memory
+    registry: every cycle is listed under the status its own row reads, and under no other.
+
+    Bugs caught:
+    - the filter reading the latest run alone, so a cycle its gate ended is listed as
+      ``completed`` while its row reads ``failed``, and one waiting between workloads is listed
+      as ``completed`` while its row reads ``active``;
+    - a one-workload cycle's row naming no ending, or reading ``created`` for a cancelled run.
+    """
+
+    #: Each cycle, and what its own row must read: its status and the ending it names.
+    EXPECTED = {
+        "cyc_completed": ("completed", None),
+        "cyc_failed": ("failed", None),
+        "cyc_cancelled": ("cancelled", None),
+        "cyc_active": ("active", None),
+        "cyc_waiting_at_its_gate": ("paused", None),
+        "cyc_between_workloads": ("active", None),
+        "cyc_ended_at_its_gate": ("failed", "plan_rejected"),
+        "cyc_cancelled_after_it_ended": ("completed", "sequence_completed"),
+        "cyc_repair_completed": ("completed", "single_workload_ended"),
+        "cyc_repair_cancelled": ("cancelled", "single_workload_ended"),
+    }
+
+    @pytest.fixture
+    async def listing(self, mock_project_registry, mock_squad_profile, mock_flow_executor):
+        from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+        from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+
+        registry = MemoryCycleRegistry()
+        start = datetime(2026, 11, 26, tzinfo=UTC)
+
+        async def cycle(cycle_id, *run_statuses, defaults=None, end=None, cancel=False):
+            await registry.create_cycle(
+                Cycle(
+                    cycle_id=cycle_id,
+                    project_id="hello_squad",
+                    created_at=start + timedelta(minutes=len(registry._cycles)),
+                    created_by="t",
+                    prd_ref=None,
+                    squad_profile_id="full",
+                    squad_profile_snapshot_ref="sha256:abc",
+                    task_flow_policy=TaskFlowPolicy(mode="sequential"),
+                    build_strategy="fresh",
+                    applied_defaults=defaults or {},
+                )
+            )
+            for n, status in enumerate(run_statuses, start=1):
+                await registry.create_run(
+                    Run(
+                        run_id=f"run_{cycle_id}_{n}",
+                        cycle_id=cycle_id,
+                        run_number=n,
+                        status=status,
+                        initiated_by="api",
+                        resolved_config_hash="h",
+                    )
+                )
+            if end is not None:
+                last = f"run_{cycle_id}_{len(run_statuses)}"
+                await registry.record_cycle_end(RecordedEnd(cycle_id, last, end))
+            if cancel:
+                await registry.cancel_cycle(cycle_id)
+
+        await cycle("cyc_completed", "completed")
+        await cycle("cyc_failed", "failed")
+        await cycle("cyc_cancelled", "cancelled", cancel=True)
+        await cycle("cyc_active", "running")
+        # Its framing run is paused at the gate: the latest run alone reads this one ``active``.
+        await cycle("cyc_waiting_at_its_gate", "paused", defaults=_TWO_WORKLOADS)
+        await cycle("cyc_between_workloads", "completed", defaults=_TWO_WORKLOADS)
+        await cycle(
+            "cyc_ended_at_its_gate",
+            "completed",
+            defaults=_TWO_WORKLOADS,
+            end=CycleStopReason.PLAN_REJECTED,
+        )
+        await cycle(
+            "cyc_cancelled_after_it_ended",
+            "completed",
+            end=CycleStopReason.SEQUENCE_COMPLETED,
+            cancel=True,
+        )
+        await cycle("cyc_repair_completed", "completed", end=CycleStopReason.SINGLE_WORKLOAD_ENDED)
+        await cycle("cyc_repair_cancelled", "cancelled", end=CycleStopReason.SINGLE_WORKLOAD_ENDED)
+        app = FastAPI()
+        app.include_router(router)
+        register_domain_error_handlers(app)
+        app.state.project_registry = mock_project_registry
+        app.state.cycle_registry = registry
+        app.state.squad_profile = mock_squad_profile
+        app.state.flow_executor = mock_flow_executor
+        app.state.box_reader = QuietBox()
+        return TestClient(app)
+
+    def _rows(self, client, query: str = "") -> dict[str, tuple]:
+        resp = client.get(f"/api/v1/projects/hello_squad/cycles{query}")
+        assert resp.status_code == 200, resp.text
+        return {c["cycle_id"]: (c["status"], c["recorded_ending"]) for c in resp.json()}
+
+    async def test_each_cycles_row_reads_its_status_and_names_its_ending(self, listing):
+        assert self._rows(listing) == self.EXPECTED
+
+    @pytest.mark.parametrize("status", sorted({s for s, _ in EXPECTED.values()} | {"created"}))
+    async def test_a_status_lists_exactly_the_cycles_whose_row_reads_it(self, listing, status):
+        listed = self._rows(listing, f"?status={status}")
+
+        assert listed == {c: row for c, row in self.EXPECTED.items() if row[0] == status}
+
+    async def test_the_cancelled_after_ending_conflict_is_named_on_the_row(self, listing):
+        """The ending came first and stands; the row says the cycle was cancelled afterwards."""
+        resp = listing.get("/api/v1/projects/hello_squad/cycles?status=completed")
+        row = next(c for c in resp.json() if c["cycle_id"] == "cyc_cancelled_after_it_ended")
+
+        assert row["status_conflict"] == "cancelled_after_ending"
+
+
 class TestCreatePinsTheMemorySnapshot:
     """SIP-0110 §0.7, entered at the create route the CLI and the verification-set driver call: a
     standalone cycle pins its snapshot when it is created, and its declaration decides whether the
