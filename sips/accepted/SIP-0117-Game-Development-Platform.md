@@ -200,6 +200,7 @@ phases are in its own ledger.
 | Studio's qualification identity includes its release channel: read from the running Studio's startup log, held to the proof at every claim and across every reset, recorded in the qualification record and in each result's `ran_with` beside the proof's (R5.29) | **shipped** | 2.8.1 (PR #3220, closing #3206) |
 | An owner's cancel: a cycle's cancel and a Campaign's abort stop the remote operations they own, a result that arrives after the cancel is kept as the late result and is no evidence, and nothing new is queued for a cancelled owner (R5.30) | **shipped** | 2.9 (PR #3256; #3236 tracks the MacBook lane's half) |
 | A qualification names each tool whose definition changed: each tool's own digest in the record (schema `/3`), `tools_changed` beside the added and removed, the worker's refusal naming the tools that differ, and a comparison against an earlier record read as unavailable, never as no change (R5.31) | **shipped** | 2.9 (PR #3262, closing #3230) |
+| A result the worker builds itself names what its run had established: the cancel's and a raise's `interrupted` carry the runner's `running_with()`, read before the reset (R5.34) | **shipped** | 2.9 (PR #3277; #3236 tracks the live cancel round on real Studio) |
 | A candidate's own setup failure repaired in the run: attributed to the candidate only when the six conditions of the 2.9 plan's item 7 hold, each with its evidence kept, then one bounded in-run correction with the console's error in its evidence; anything else keeps today's routing, not executed (a numbered amendment beside R5.28, made in the PR that builds it) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
 | A dedicated worker brings Studio to the front: inside its declared window, after the idle threshold and a fresh read of human input, each activation and refusal recorded in `ran_with`, and anything uncertain a refusal (a numbered amendment to R5.18, made in the PR that builds it; the Spark lane writes the rule and the MacBook lane builds it) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3193 |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
@@ -1688,7 +1689,7 @@ cancel was already built. It wasn't reached, because nothing asked.
 - **An agent's operation names no Campaign.** One still out after its cycle had ended without a cancel wouldn't be
   found by the abort. A task's operation ends with its task, and none is known to outlive its cycle.
 - **`ran_with` on a result the worker builds itself,** such as an abandoned play's `interrupted`, isn't here. It is
-  the MacBook lane's half of #3236, with the live cancel round on the real runner.
+  the MacBook lane's half of #3236, with the live cancel round on the real runner. It is R5.34.
 
 **The tests.**
 - `tests/unit/remote_execution/registry_contract.py`, run on the memory store and on Postgres:
@@ -1719,27 +1720,6 @@ cancel was already built. It wasn't reached, because nothing asked.
 every operation it owns to stop, a result after the cancel is kept and is no evidence, and a race has one stated
 precedence. The Spark lane built the runtime's half. The MacBook lane, which owns the worker and the Studio
 adapter, agreed the seam on 2026-11-26: the serve loop and the runner are unchanged.
-
-# R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
-
-**What prompted it.** SIP-0116, Agent Skillsets, was accepted on 2026-11-09. The owner split it from Capability-Backed
-Agents after revision 3's *specialty* turned out to rebuild that SIP's assembly rules beside the stack and
-development-profile seams. SIP-0116 names this SIP as its first consumer and leaves three things to this revision:
-- the engine operations as a provider's implementations of engine-neutral capability contracts, each with a
-  verification mode (its §6.1 and §6.2);
-- the proposal for `qa.run_remote_operation` as a plannable task type (its §6.3);
-- the worker registry its `worker` tool location relies on (its §8).
-
-**Where §R3, §R2 or the body differs, this section governs.** They're kept as the record of what was proposed.
-
-**The rule: the development profile requires, the selected agents supply, and the provider executes.**
-
-**What stands from revision 3, unchanged:**
-- the remote-execution contract (R3.3);
-- Roblox as proven, and the Studio transaction (R3.6);
-- the assertion protocol (R3.7);
-- the product and publishing (R3.8);
-- the owner's decisions D2–D5, D9 and D10. D7 and D8 are read as R4.4 and R4.8 say.
 
 ## R5.31 A qualification names each tool whose definition changed (#3230, 2026-11-26; R2.4, R5.21, R5.29; the 2.9 plan's item 11, adopted by the owner)
 
@@ -1777,6 +1757,69 @@ replaces. The worker's refusal of a Studio whose tool list differs names the too
 
 The live runs on the Mac's Studio are in the PR.
 
+## R5.34 A result the worker builds itself names what its run had established (#3236, 2026-11-26; R5.30, R5.5, R5.29)
+
+**What changed.** R5.30 left one part to the MacBook lane. A worker answers some results itself: the `interrupted`
+it sends after stopping a cancelled run, and the one it sends for a tool that raised. Those carried an empty
+`ran_with`. So a play cancelled part way named no Studio, no place and no harness, and what had run wasn't on the
+record. They now carry what the run had established when it stopped.
+
+**The evidence** (#3236, run on main at `54011a70` on 2026-11-26). `Worker.serve()` ran over the real registry with
+`RobloxStudioRunner` over the stand-in `StudioMCP`, and the cycle was cancelled while the setup's click was out.
+The proof, the sync and the place's baseline had all been read. The stored result read `interrupted | cancelled
+while the operation was running | ran_with {} | evidence 0`.
+
+**The seam**, agreed with the Spark lane on 2026-11-26 before either built it (the 2.9 plan's item 2):
+
+| Point | As built |
+|---|---|
+| **The port** | `OperationRunnerPort.running_with()`, required, with no default: a copy of the `ran_with` the run in progress has established. A fact goes in only once it has been read, and the copy is empty before a run begins |
+| **The serve loop** | Reads it after the run has stopped and before the tool is reset, and puts it on the `interrupted` it builds for a cancel (`_cancelled`) and for a tool that raised (`_result_of`). It adds no key of its own, since the status and the reason say who ended the run. `served_by` stays the registry's, written at acceptance (R5.32) |
+| **A tool that can't say** | When `running_with()` raises, the worker still answers. The result carries no `ran_with`, and its reason says why, ending "what it ran with couldn't be read: …" |
+| **The Studio runner** | Keeps one record per run, starting fresh at each run and at each reset. The run's own facts go in once the request reads as its own: the provider, the reader, the harness and the source revision. Then each fact is added as it is read: `qualified.*`, `played.*` and `qualified_by` once the running Studio is held to its proof; `place_baseline` after the sync; `play_session` once the scenario has ended. A completed play's `ran_with` is that record, so the record a cancel leaves and the one a return leaves can't disagree. Each attempt at the transaction starts from the run's own facts, so after R5.17's reset nothing read of the Studio the reset quit is carried into the next attempt |
+| **The fixture provider** | Its identity (the version and the reader) once a run of its own operation has begun |
+| **Not changed** | The runner's own refusals, and the `not_executed` a worker answers for a tool it couldn't reset, since nothing ran |
+
+**The tests.**
+- `tests/unit/remote_execution/test_roblox_studio_cancel.py` enters at `Worker.serve()` with the real runner over the
+  stand-in. Each case holds the play's own session at one step and cancels its cycle there:
+  - before the session opened, the play names the run's own facts and no Studio;
+  - after the proof and before the place was found, it names the Studio and no place;
+  - at the setup's click, it names the place's baseline and no play session;
+  - a play after one that completed names none of the first's facts;
+  - a second attempt after a drifted place names none of the first attempt's facts.
+- `test_worker_serving.py`: a cancel's and a raise's `interrupted` carry what the run established, read before the
+  reset (the harness's reset clears it). A `running_with()` that raises is still answered, and says so.
+- `remote_path.py`: a cancelled play's facts reach the requester over the wire.
+- Five mutations each fail a test: the loop reading after the reset, the cancel's answer dropping the record, the
+  proof recorded before it is read, a run that doesn't start a fresh record, and an attempt that doesn't start from
+  the run's facts.
+
+**What remains** (#3236): the live cancel round on real Studio, after the worker is requalified.
+
+**Who ruled.** The owner adopted the 2.9 plan on 2026-11-26, whose item 2 splits #3236 by host. The Spark lane
+agreed the seam, and the MacBook lane built it.
+
+# R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
+
+**What prompted it.** SIP-0116, Agent Skillsets, was accepted on 2026-11-09. The owner split it from Capability-Backed
+Agents after revision 3's *specialty* turned out to rebuild that SIP's assembly rules beside the stack and
+development-profile seams. SIP-0116 names this SIP as its first consumer and leaves three things to this revision:
+- the engine operations as a provider's implementations of engine-neutral capability contracts, each with a
+  verification mode (its §6.1 and §6.2);
+- the proposal for `qa.run_remote_operation` as a plannable task type (its §6.3);
+- the worker registry its `worker` tool location relies on (its §8).
+
+**Where §R3, §R2 or the body differs, this section governs.** They're kept as the record of what was proposed.
+
+**The rule: the development profile requires, the selected agents supply, and the provider executes.**
+
+**What stands from revision 3, unchanged:**
+- the remote-execution contract (R3.3);
+- Roblox as proven, and the Studio transaction (R3.6);
+- the assertion protocol (R3.7);
+- the product and publishing (R3.8);
+- the owner's decisions D2–D5, D9 and D10. D7 and D8 are read as R4.4 and R4.8 say.
 
 ## R4.1 What takes the specialty's place
 

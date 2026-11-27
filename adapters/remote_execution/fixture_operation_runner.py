@@ -88,6 +88,8 @@ _WORLD_SECTIONS = {"property": "properties", "attribute": "attributes", "gui_sta
 class FixtureOperationRunner(OperationRunnerPort):
     def __init__(self, *, sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
         self._sleep = sleep
+        #: What the run in progress has established (#3236).
+        self._established: dict[str, str] = {}
 
     def serves(self) -> tuple[ServedOperation, ...]:
         return (ServedOperation(PROVIDER, OPERATION),)
@@ -100,14 +102,21 @@ class FixtureOperationRunner(OperationRunnerPort):
 
     async def reset(self) -> None:
         """Nothing to reset: the fixture keeps nothing between operations."""
+        self._established = {}
+
+    def running_with(self) -> Mapping[str, str]:
+        """The fixture's identity once a run of its operation has begun (#3236)."""
+        return dict(self._established)
 
     async def run(self, request: RemoteOperationRequest) -> RemoteOperationResult:
+        self._established = {}
         if (request.provider, request.operation) != (PROVIDER, OPERATION):
             return self._not_executed(
                 request,
                 f"the fixture provider runs {PROVIDER}/{OPERATION}, and was asked for "
                 f"{request.provider}/{request.operation}",
             )
+        self._established = {PROVIDER: VERSION, "reader": VOCABULARY.reader}
         declaration, defects = handed_scenario_defects(request.scenario, VOCABULARY)
         if declaration is None:
             return self._not_executed(request, "the scenario can't be run: " + "; ".join(defects))
@@ -132,7 +141,7 @@ class FixtureOperationRunner(OperationRunnerPort):
             records=records,
             evidence=(EvidenceItem(RUN_LOG_NAME, json.dumps(log, indent=2), "application/json"),),
             provider_version=f"{PROVIDER}@{VERSION}",
-            ran_with={PROVIDER: VERSION, "reader": VOCABULARY.reader},
+            ran_with=dict(self._established),
             dispatch_id=request.dispatch_id,
         )
 

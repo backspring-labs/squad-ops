@@ -217,6 +217,11 @@ class RobloxStudioRunner(OperationRunnerPort):
         self._session = session_factory or (lambda **kw: StudioMcpSession([str(studio_mcp)], **kw))
         self._studio_version_of = studio_version_of
         self._discover_seconds = discover_seconds
+        #: What the run in progress has established, each fact once it has been read (#3236).
+        #: A completed play's ``ran_with`` is built from it, so the record a cancel leaves and
+        #: the one a return leaves can't disagree.
+        self._established: dict[str, str] = {}
+        self._run_facts: dict[str, str] = {}
 
     def serves(self) -> tuple[ServedOperation, ...]:
         return (ServedOperation(PROVIDER, OPERATION),)
@@ -261,6 +266,7 @@ class RobloxStudioRunner(OperationRunnerPort):
 
         A place whose non-script state isn't its pinned baseline is reset (R5.17) and the
         transaction begun again, once."""
+        self._established = {}
         if (request.provider, request.operation) != (PROVIDER, OPERATION):
             return self._ended(request, OperationStatus.NOT_EXECUTED,
                                f"{PROVIDER} runs {PROVIDER}/{OPERATION}, and was asked for "
@@ -269,6 +275,17 @@ class RobloxStudioRunner(OperationRunnerPort):
         if declaration is None:
             return self._ended(request, OperationStatus.NOT_EXECUTED,
                                "the scenario can't be run: " + "; ".join(defects))  # fmt: skip
+        self._establish(
+            {
+                PROVIDER: PROVIDER_VERSION,
+                "reader": VOCABULARY.reader,
+                "source_revision": request.source_revision,
+                **{f"harness.{name}": digest[:16] for name, digest in harness.digests().items()},
+            }
+        )
+        #: The run's own facts: each attempt at the transaction begins from these, so a fact
+        #: an attempt read about a Studio a reset then replaced isn't carried into the next.
+        self._run_facts = dict(self._established)
         manifest, unplaced = place.manifest_scripts(request.source_files)
         if unplaced:
             return self._ended(request, OperationStatus.NOT_EXECUTED, "nothing was run: " + "; ".join(
@@ -325,6 +342,7 @@ class RobloxStudioRunner(OperationRunnerPort):
     ) -> RemoteOperationResult:
         """One attempt at the transaction. Raises :class:`_Drifted`, before anything is
         written, when the place isn't its pinned baseline."""
+        self._established = dict(self._run_facts)
         if any(a.action in play.STUDIO_INPUT_ACTIONS for a in (*declaration.setup,
                                                                 *declaration.steps)):  # fmt: skip
             behind = self._studio_behind()
@@ -338,6 +356,15 @@ class RobloxStudioRunner(OperationRunnerPort):
         try:
             check = await session.open()
             live = self._held_to_proof(check, proved)
+            # R5.29: the Studio the qualification names, and the one this play runs on, once
+            # the running one has been read and held to it.
+            self._establish(
+                {
+                    **proved.named("qualified"),
+                    **live.named("played"),
+                    **({"qualified_by": proved.record[:16]} if proved.record else {}),
+                }
+            )
             studio = await place.identity(session, discover_seconds=self._discover_seconds)
             sid = studio.studio_id
             pinned = await place.baseline(session, sid)
@@ -353,10 +380,12 @@ class RobloxStudioRunner(OperationRunnerPort):
                     "synced scripts carry attributes or tags: " + "; ".join(marked)
                 )
             before = await place.baseline(session, sid)
+            self._establish({"place_baseline": before.digest[:16]})
             await place.start_play(session, sid)
             playing = True
             try:
                 records, log = await play.run_scenario(session, sid, declaration)
+                self._establish({"play_session": log.session_id})
                 player = await play.observe(
                     session,
                     sid,
@@ -406,14 +435,7 @@ class RobloxStudioRunner(OperationRunnerPort):
                 EvidenceItem(CONSOLE_NAME, redact(console[-CONSOLE_CHARS:])),
             ),  # fmt: skip
             provider_version=f"{PROVIDER}@{PROVIDER_VERSION}",
-            ran_with={
-                **self._ran_with(before.digest, request.source_revision),
-                "play_session": log.session_id,
-                # R5.29: the Studio the qualification names, and the one this play ran on.
-                **proved.named("qualified"),
-                **live.named("played"),
-                **({"qualified_by": proved.record[:16]} if proved.record else {}),
-            },
+            ran_with=self.running_with(),
             dispatch_id=request.dispatch_id,
         )
 
@@ -446,14 +468,13 @@ class RobloxStudioRunner(OperationRunnerPort):
             raise NotProved("; ".join(differs) + " (R2.4: a mode not proved reads not executed)")
         return StudioIdentity(version, tools, channel)
 
-    def _ran_with(self, baseline_digest: str, source_revision: str) -> dict[str, str]:
-        return {
-            PROVIDER: PROVIDER_VERSION,
-            "reader": VOCABULARY.reader,
-            "place_baseline": baseline_digest[:16],
-            "source_revision": source_revision,
-            **{f"harness.{name}": digest[:16] for name, digest in harness.digests().items()},
-        }
+    def running_with(self) -> Mapping[str, str]:
+        """What the run in progress has established, as a completed play's ``ran_with``
+        carries it: a copy, each fact once it has been read, and nothing outside a run."""
+        return dict(self._established)
+
+    def _establish(self, facts: Mapping[str, str]) -> None:
+        self._established.update(facts)
 
     def _studio_behind(self) -> str:
         """``""`` when a Studio is the app in front, or what is in front instead."""
@@ -509,6 +530,7 @@ class RobloxStudioRunner(OperationRunnerPort):
     async def reset(self) -> None:
         """:meth:`_reset_held`, with Studio held against a re-qualification (#3048). Raises
         :class:`StudioBusy` while one runs, and the worker tries again at its next claim."""
+        self._established = {}
         pins = self._proved
         if pins is None or isinstance(pins, ProvedOn):
             await self._reset_held()
