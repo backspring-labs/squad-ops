@@ -202,6 +202,7 @@ phases are in its own ledger.
 | A qualification names each tool whose definition changed: each tool's own digest in the record (schema `/3`), `tools_changed` beside the added and removed, the worker's refusal naming the tools that differ, and a comparison against an earlier record read as unavailable, never as no change (R5.31) | **shipped** | 2.9 (PR #3262, closing #3230) |
 | A result the worker builds itself names what its run had established: the cancel's and a raise's `interrupted` carry the runner's `running_with()`, read before the reset (R5.34) | **shipped** | 2.9 (PR #3277; #3236 tracks the live cancel round on real Studio) |
 | A play reads the place's non-script state twice, at its pin check and after play, the second held to the first; a place without a synced root its scripts go into is refused by name (R5.36) | **shipped** | 2.9 (PR #3290) |
+| The checks that guard a person hold for every input play: R5.33's conditions read whether or not Studio is in front, the lock and session on any worker, the front read once, the activation by the proved process's id, the lease and window read again before the first input, the lock and counter during the play, the session entry by entry, `front.input` on every input play (R5.37) | **shipped** | 2.9 (PR #PRNUM, closing #3300) |
 | A candidate's own setup failure, the core: a play's result names the script errors its provider read, the registry writes who served it, and six conditions read from the cycle's records attribute a setup failure to the candidate, which then gets one correction in the run; the reading is kept either way, and anything else keeps its routing, not executed (R5.32) | **shipped** | 2.9 (PR #3275) |
 | A candidate's own setup failure, on Studio: the provider reads its console for script errors and names its environment (the MacBook lane; R5.32's Studio half) | **shipped** | 2.9 (PR #3288) |
 | A candidate's own setup failure, played: the diagnostic goes from baseline to attributed failure to repair to the same frozen scenarios passing (R5.32; the certification window's case 9) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
@@ -2160,6 +2161,43 @@ whether the activation was called and whether any input was sent:
     read during the play, so the play can't refuse itself.
 
 Each check removed in turn fails a test.
+
+**R5.37 as built** (the MacBook lane, 2026-11-27; PR #PRNUM, closing #3300). The two readings the rule asked for, both
+taken by hand on the MacBook with the worker stopped and nothing claimed, on Studio 0.748.0.7481526 and Darwin 25.5,
+with the owner's go-ahead in the MacBook session:
+
+| Point | Reading | So |
+|---|---|---|
+| 3, the activation | 12:57–12:58 ET. Three rounds of another app brought to the front, then `MacStudioApp.activate(pid)`: AppKit's `NSRunningApplication.runningApplicationWithProcessIdentifier(pid).activateWithOptions(…)` through `osascript -l JavaScript`. Each answered in 0.06–0.09 s with Studio's process the same before and after and the proved Studio read in front. No prompt, and no setting or permission changed. A process id that isn't running answered `gone`, and no Studio started | **Built as written.** The activation acts on the running process and has no path that launches one; `open -a` is no longer called to bring Studio forward |
+| 6, the idle counter | 12:58–13:00 ET. A hand play of the qualification setup (its `click_gui`) then a 10 s `hold_key`, with macOS's idle counter sampled every 0.25 s: 190 samples over 88 s, rising from 152.7 s to 240.9 s and never lower than the sample before. The activation rounds above didn't move it either | **Built as written.** The counter is the person's alone, so it is read during the play, `input_during_play` is detected, and test 14's conditional branch fell away |
+
+**What the build settled where the rule left it open:**
+- **A worker that isn't dedicated reads only the lock during the play,** as well as the lock and the session before
+  it. It holds no idle threshold (point 1), so its counter isn't read at all.
+- **The lock is read before the first input action too,** not only before each one after it.
+- **Point 4's read is one read,** immediately before the first input action, after the activation or the in-front
+  check: the lease, the window and the idle counter. A counter lower there than the check's last reading is
+  `input_before_activation` (test 4).
+- **The proved Studio** is the one process running when the proof read Studio's channel (which reads exactly one).
+  Two, none, or a read that fails is no proved process, so nothing is brought forward, and another Studio in front
+  reads as another app.
+- **Off the serving loop's event loop.** The runner runs on the serving loop's own loop
+  (`serving.Worker._serve_claim`: `asyncio.ensure_future(self._runner.run(request))`), and every read here is a
+  process the Mac answers. So the check and each read around an input action run through `asyncio.to_thread`, and
+  the lease goes on renewing during them. A cancel during the activation is the cancel's: the run raises
+  `CancelledError`, and nothing after it is sent (test 11).
+- **The activation's own call** is bounded by the lease's time left, at most 30 s, and isn't made with under a
+  second of it left (`lease_not_held`).
+
+**The tests** are R5.37's, numbered as the rule numbers them, in `tests/unit/remote_execution/test_roblox_studio_front.py`:
+1 to 12 at `RobloxStudioRunner.run`, 13 through `Worker.serve()`, and in test 14's place an `input_during_play` test
+whose held key is the scenario's last input. R5.33's conditions, each failing alone, run with Studio behind and
+with it in front. **Mutations,** each check removed in turn, all failing a test (16): the conditions skipped with
+Studio in front; no lock or session on a worker that isn't dedicated; a failed front read going on; any Studio taken
+for the proved one; the proved process unchecked; the process set not compared after; the timeout unbounded; no
+floor on the lease left; the guard skipping the lease and window; the guard reading no lock; no counter during the
+play; a held key's end not read; the runner passing no guard; any session's "on the console" paired with any's
+"logged in"; a contradictory entry read as available; no record with Studio in front.
 
 # R4. Revision 4 (2026-11-09): Roblox as skillsets, a provider and a development profile
 
