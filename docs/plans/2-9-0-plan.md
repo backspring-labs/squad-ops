@@ -504,7 +504,7 @@ The cut record says what one window does not show: reliability across machines, 
 ## 8. The open issues, each placed (D10)
 
 The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed for item 13. #3251 was filed on
-2026-11-26, which makes 40.
+2026-11-26, which makes 40. Five more were filed that day while the line was built, each placed below.
 
 **In 2.9 (15):** #3235, #3236, #3224, #3244, #3128, #3000, #3110 (Stage A); #3200, #3182, #3240, #3243, #3230 (Stage B); #3193, #3250 (Stage C); #3101 (Stage D).
 
@@ -528,6 +528,20 @@ The 39 issues open on 2026-11-20 are the outside review's 38, plus #3250 filed f
 | #1965 | a separately governed experiment, not a release dependency |
 | #1039 | the docs site's design pass, independent backlog |
 | #3251 | the Spark's GPU containers after a reboot: a patch, built by the Spark lane beside 2.9. The host fix is the owner's to install |
+
+**Filed while the line was built (2026-11-26), each open outside 2.9 (5).** None is a 2.9 item, and none holds
+the cut. Each was found by running a 2.9 item's case, and is named here so it isn't found again.
+
+| issue | found by | disposition |
+|---|---|---|
+| #3261 | #3235's search for the same cause | The cycle's model check reads the runtime's LLM port, and each agent binds its own: the same shape #3235 fixed for remote execution. Unplaced; 2.10's intake |
+| #3265 | the cycle-views read (item 3) | A cycle cancelled between workloads records no ending. Every view is silent together, so item 3's done-when doesn't ask for it. Unplaced; it needs its own reading of R5.30's cancel paths |
+| #3266 | the review of item 5 | A run cancelled while a hand-off's verdict is read ends the task failed and counts a failure. It read failed before item 5 too. Unplaced |
+| #3272 | #3200's own comment (item 7) | A row-8 repair cycle's prompt doesn't carry the script error that blocked its scenarios. Item 7 is the run's correction; this is the Campaign's. Unplaced; after item 7's Studio half |
+| #3274 | the review of item 3 | A cycle with more than 50 runs is read on the list from its first 50. The most any cycle holds today is five. Unplaced |
+
+**Filed and closed inside the line:** #3268, the loaded checks' rows colliding in every open pull request, closed by
+PR #3271 the day it was filed.
 
 ## 9. The order, and the cut
 
