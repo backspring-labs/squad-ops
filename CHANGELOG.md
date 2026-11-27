@@ -39,6 +39,8 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     front. The four settings are the owner's; the code ships with none, and without them nothing changes.
   - R5.18's check now runs after the session opens and the running Studio is held to its proof.
   - The runbook is `docs/ops/STUDIO_WORKER_RUNBOOK.md`.
+  - `scripts/dev/studio_worker_proof.py` passes the four settings, and names an owner for each round, which the
+    registry has required since R5.30 (#3282): on main the proof raised before its first round.
 
 ### Fixed
 - **On a product, a plan's `qa.test` names a file one of its runners collects** (#3182, the plan-gate half;
