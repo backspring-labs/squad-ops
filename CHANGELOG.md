@@ -78,6 +78,12 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     play whose outcomes differ, and reads the median's cut against the 20% target;
   - `host-bar` reads a `host_quiet_reading.py` document against the bar a set's start and end must meet. An
     unread reading misses it.
+- **Isolation between Studio plays is read by a sequence played through the runtime** (#3250; the certification
+  pre-registration's amendment 13b, its case 12). `scripts/dev/play_isolation_sequence.py` builds three trees
+  from the pinned commit (the baseline, one whose scripts leave seven marks, one that reports each mark as
+  present or absent) and plays ten plays of them: after a completed play, after one whose setup failed, after one
+  cancelled while it ran, and two queued together. A marked play must read every mark present, or absent
+  elsewhere proves nothing. The marks exist only in a play's staged tree.
 
 ### Fixed
 - **A stop a skill declares outranks the task's own requirements** (#3240; SIP-0116 §17aa; the 2.9 plan's

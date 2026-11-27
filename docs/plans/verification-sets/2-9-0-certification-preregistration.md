@@ -451,8 +451,7 @@ Non-execution is counted beside failure in every readout.
 ## 13. Amendments
 
 Each is added here before the run it changes, with its date, what changed, the evidence and who ruled.
-Still expected: the isolation tests of case 12, before the first play they read; and, if check 4 finds the tool
-list moved, the new pin.
+Still expected: if check 4 finds the tool list moved, the new pin.
 
 ### 13a. The measured sets: the instrument, the host's bar, and how a set is played and read (2026-11-27)
 
@@ -537,3 +536,86 @@ record with its measured cost, or the before set is taken again after it.
 **Not built, said deliberately:** a separate timing of delivery. **Still to come, by a later amendment:** each
 isolation test of case 12 with what it reads. They read the throughput change, which isn't designed until the
 before set is in.
+
+### 13b. Case 12's isolation tests, the change they read, and how the worker runs for both sets (2026-11-27)
+
+**What changed.** 13a left case 12's tests to a later amendment. This names them, before any play they read.
+It also records the before set, the change it led to, and one condition on the pair that 13a didn't state.
+
+**Who ruled.** The Spark lane wrote the tests and the condition. The change is the MacBook lane's design, agreed
+between the two lanes under the owner's grant of 2026-11-26, and recorded as SIP-0117 R5.36 in the PR that
+builds it.
+
+**The evidence.**
+- **The before set** (2026-11-27, 02:56 to 03:30 ET; issue #3250): 20 of 20 plays completed, every assertion
+  passed, one qualification. The median claim-to-completion time was 98.339 s and the p95 99.230 s. The place's
+  non-script state was read three times a play, 22.6 s each, 67.8 s of the 98.3 s. The scenario itself took
+  1.8 s, and 0.447 s fell outside the stages.
+- **The change:** the read after the sync and before play is removed, and the read after play is held to the
+  pin check's own reading. It projects a median near 75.7 s, a 23% cut. Only the after set can say.
+- **A dry run of the sequence** against the Spark's runtime built its three trees from the pinned commit as three
+  revisions and froze its four scenarios under the reader's vocabulary.
+
+**1. The pair's worker runs the same way for both sets.** The before set's worker was a plain process started
+from the main checkout, with no launchd service. The after set's worker is started by the same command, from the
+same checkout at the later commit, with the same environment. If the after set has to run under a service, the
+before set is taken again in that sitting under the service. §3's check 5 says "as its installed service" of the
+window's worker; for the measured sets this condition governs.
+
+**2. What the change must still do** (the MacBook lane's tests, and the after set):
+- a change to the place made while the sync runs is refused, naming the window;
+- a change through play is still refused;
+- a place that isn't its pin before the sync is still caught before anything is written, and the play begins
+  again after the reset;
+- a place that lacks a folder the sync would create is refused before anything is written, by the folder's name,
+  as the Mac's state and not the work's;
+- every completed play names the pin's place baseline, in the unit tests and across the after set's 20 plays;
+- the after set's 20 plays read the same outcomes as the before set's, play for play.
+
+**What the change gives up, said deliberately:** a change to the place made during the sync and undone before
+play ends was refused, and now passes. It takes something acting on the place twice inside one play. In the
+other direction, a change made during the sync and left in place went unseen, and is now refused.
+
+**3. The isolation sequence,** played by `scripts/dev/play_isolation_sequence.py play` on the Spark, through the
+runtime, as the measured sets are. Ten plays of three trees, each built from the pinned commit:
+- **the baseline,** untouched;
+- **the marked tree:** the baseline plus marks its first server script and first client script leave when they
+  start (a workspace attribute, a value instance, a `_G` key on each side, a key in a module's table, a screen
+  under the player) and one module no other tree holds;
+- **the reading tree:** the baseline plus a reader that reports, for each mark, `present` or `absent`. The marked
+  tree carries the reader too, after its marks.
+
+The marks and the reader are the tool's own lines, named `squadops_*`. They exist only in a play's staged tree
+and are never written to the product.
+
+| # | Test | Passes when |
+|---|---|---|
+| 1 | The marks are made, and the reader sees them | A play of the marked tree reads all seven marks `present`. Without this, `absent` anywhere proves nothing |
+| 2 | Nothing is left after a completed play | The reading tree, played next, reads all seven `absent` |
+| 3 | The failed play's setup did fail | A marked play whose setup can't be met reads `setup_failed` on every assertion |
+| 4 | Nothing is left after a failed play | The reading tree, played next, reads all seven `absent` |
+| 5 | The cancelled play was interrupted | A marked play cancelled 30 s after its claim reads `interrupted` |
+| 6 | Nothing is left after an interrupted play | The reading tree, played next, reads all seven `absent` |
+| 7 | The baseline reads the same before and after the candidates | The registered scenario passes on the baseline first and again eighth, with the same outcomes and the same staged revision |
+| 8 | Two plays queued together run one after the other, each on its own tree | A marked play and a reading play are queued before either is claimed. The marked one is claimed first, the reading one is claimed only after it settles, and it reads all seven `absent` |
+| 9 | Every completed play read one place baseline | Each completed play's `place_baseline` is named, and all are the same |
+| 10 | Every play ran the revision asked, and each tree is its own | Each completed play's `ran_with` names the revision its request staged; each tree staged as one revision; no two trees as the same |
+
+**How the plan's list is read by it:** module and global state by the `_G` and module-table marks; GUI and
+player state by the screen; instance attributes and workspace changes by the attribute and the value instance;
+the candidate's source revision by test 10 and by the module only the marked tree holds; a failed play's residue
+and an interrupted play's by tests 4 and 6; the baseline, candidate, baseline sequence by test 7; a competing
+operation by test 8. **State after a Studio restart and after a worker restart** is read by the window's cases 5
+and 6, and by the play after test 5's cancel, which follows the worker's own reset of Studio.
+
+**Case 12 passes when** all ten tests hold on one whole sequence, with section 2's readings. A sequence that
+stopped early is not a pass whatever its tests read, and a test whose plays weren't played is not read.
+
+**When it is played.** In the window, after the after set, with the throughput change on the worker. Its
+cancelled play makes the worker reset Studio, so it never runs between the two sets or inside one. An uncounted
+play of it before the window, on whatever worker is serving, is a rehearsal: it shakes out the tool and proves
+nothing counted.
+
+**What it doesn't show:** state held outside Studio's datamodel and Lua state, such as a file the worker writes;
+isolation between plays on two workers; and anything about marks a real candidate might leave that these seven
+don't resemble.
