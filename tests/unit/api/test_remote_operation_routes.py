@@ -391,3 +391,65 @@ def test_the_route_reads_the_runtimes_own_reply_router():
     refused = w.client.post(OPERATIONS, json=body("send-0"))
 
     assert (created.status_code, refused.status_code) == (201, 403)
+
+
+# --- #3236's follow-up: whose operation it is, by the runtime's own record ------------------------
+
+
+def test_an_operation_for_a_cycle_the_runtime_doesnt_hold_is_refused_and_nothing_is_queued():
+    """A task's handler names its cycle, and the route reads it. Bug caught: an operation
+    queued under a cycle id nobody holds, which no cycle's cancel and no Campaign's abort could
+    ever reach, left to run until its requester's wait ran out."""
+    w, session = _served_world()
+
+    refused = w.client.post(OPERATIONS, json=_body(w, origin={**ORIGIN, "cycle_id": "cyc_gone"}))
+    nothing = w.as_(Role.WORKER).post(f"/api/v1/workers/sessions/{session}/claims")
+
+    assert (refused.status_code, _error(refused)["code"]) == (422, "REMOTE_OPERATION_OWNER_UNKNOWN")
+    assert _error(refused)["details"] == {"cycle_id": "cyc_gone"}
+    assert nothing.json() == {"claim": None}
+
+
+@pytest.mark.parametrize(
+    ("campaign", "said", "kept"),
+    [
+        ("cmp_1", {}, "cmp_1"),
+        ("cmp_1", {"campaign_id": "cmp_forged"}, "cmp_1"),
+        (None, {"campaign_id": "cmp_forged"}, None),
+    ],
+    ids=["the cycle's Campaign is added", "over what the body said", "a cycle in none keeps none"],
+)
+def test_an_operations_campaign_is_the_cycles_own_whatever_the_body_says(campaign, said, kept):
+    """Bug caught: an agent's operation owned by its cycle alone, so a Campaign's abort reaches
+    it only through the cycle's cancel; or a body naming a Campaign the cycle isn't in, so that
+    Campaign's abort stops another's work."""
+    w, _session = _served_world()
+    w.cycles["cyc_1"] = campaign
+
+    created = w.client.post(OPERATIONS, json=_body(w, origin={**ORIGIN, **said}))
+
+    assert created.status_code == 201
+    assert w.operation(created.json()["operation_id"]).origin.get("campaign_id") == kept
+
+
+def test_a_campaigns_abort_reaches_an_operation_an_agent_asked_for():
+    """Wiring, entered at the agent's create and then at the registry call a Campaign's abort
+    makes (``cancel_owned`` by Campaign, R5.30). Bug caught: the operation missed by the abort,
+    because only the runtime's own plays named their Campaign."""
+    import asyncio
+
+    from squadops.remote_execution.workers import ORIGIN_CAMPAIGN
+
+    w, _session = _served_world()
+    w.cycles["cyc_1"] = "cmp_1"
+    created = w.client.post(OPERATIONS, json=_body(w))
+    operation_id = created.json()["operation_id"]
+
+    reached = asyncio.run(
+        w.registry.cancel_owned(
+            ORIGIN_CAMPAIGN, "cmp_1", because="campaign cmp_1 was aborted", final=True
+        )
+    )
+
+    assert [c.operation_id for c in reached] == [operation_id]
+    assert w.operation(operation_id).cancel_requested is True

@@ -482,10 +482,12 @@ def _skills(
 
 def _least_per_directory(files: Iterable[_File]) -> list[str]:
     """The smallest file of each top-level directory, the one a plan's task names when it names
-    the least of that directory: ``qa.test`` is shown the top-level directories its named files
-    live in (``qa_prompt_contents.package_scoped``). Root files are their own "directory" there,
-    so a plan naming only a root file would be shown that file alone. That is the degenerate plan
-    the floor leaves out, or every product would fit; they are read only for a product with no
+    the least of that directory. A sample application's ``qa.test`` is shown the top-level
+    directories its named files live in (``qa_prompt_contents.package_scoped``); a product's is
+    shown each named file whole and what fits beside it (``product_scoped``, SIP-0112 H.39), so
+    on a product the floor is its named files. Root files are their own "directory" there, so a
+    plan naming only a root file would be shown that file alone. That is the degenerate plan the
+    floor leaves out, or every product would fit; they are read only for a product with no
     directory."""
     least: dict[str, tuple[int, str]] = {}
     roots: list[str] = []

@@ -8,7 +8,11 @@ is handed:
 - the scenario file is read and frozen under ``roblox-studio/1``;
 - ``<repo>/src`` is the candidate;
 - the transaction syncs it, holds the place's state, plays the scenario, and prints each
-  assertion's record.
+  assertion's record;
+- the result's ``ran_with`` is printed whole (#3243): the Studio the qualification names and the
+  one the play ran on, the qualification record, the place baseline, the source revision and
+  the harness digests, with whether the two Studios are the same one. A hand play's log then
+  holds the identity record a worker's result does.
 
 It writes the candidate's scripts into the place, never saves the place and never publishes.
 The runner is created as the worker creates it, from the worker's own ``roblox-studio``
@@ -29,9 +33,13 @@ import time
 from pathlib import Path
 
 from adapters.remote_execution.game_dev_roblox_studio import worker
-from adapters.remote_execution.game_dev_roblox_studio.runner import OPERATION, PROVIDER
+from adapters.remote_execution.game_dev_roblox_studio.runner import (
+    OPERATION,
+    PROVIDER,
+    identity_difference,
+)
 from adapters.remote_execution.game_dev_roblox_studio.vocabulary import VOCABULARY
-from squadops.remote_execution.models import RemoteOperationRequest
+from squadops.remote_execution.models import RemoteOperationRequest, RemoteOperationResult
 from squadops.remote_execution.scenario import (
     ScenarioRefused,
     frozen_scenario,
@@ -67,9 +75,29 @@ async def _main(repo: Path, scenario_file: Path) -> int:
     for record in result.records:
         print(f"  {record.assertion_id}: {record.outcome.value} ({record.context}) "
               f"observed {record.observed}, expected {record.expected}")  # fmt: skip
+    for line in ran_with_lines(result):
+        print(line)
     for item in result.evidence:
         print(f"--- {item.name} ---\n{item.content[-1500:]}")
     return 0 if result.status.value == "completed" else 1
+
+
+def ran_with_lines(result: RemoteOperationResult) -> list[str]:
+    """The result's ``ran_with``, every entry, and what it says of the two Studios (#3243)."""
+    if not result.ran_with:
+        return ["ran_with: none recorded"]
+    lines = ["ran_with:", *(f"  {key}: {value}" for key, value in sorted(result.ran_with.items()))]
+    differ = identity_difference(result.ran_with)
+    if differ is None:
+        lines.append(
+            "no Studio identity recorded: the result names neither the qualified nor the played "
+            "Studio"
+        )
+    elif differ:
+        lines.append(f"played on a Studio other than the qualified one: {', '.join(differ)}")
+    else:
+        lines.append("played on the qualified Studio")
+    return lines
 
 
 def main() -> int:

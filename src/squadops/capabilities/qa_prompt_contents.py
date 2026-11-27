@@ -40,6 +40,7 @@ from typing import Any
 
 from squadops.campaigns.evaluator_trees import imported_paths
 from squadops.capabilities.context_assembly import RETAKE_CURRENT_FILES_KEY
+from squadops.capabilities.handlers.source_repository import source_backed
 from squadops.cycles.structural_jsx import ECMASCRIPT_SUFFIXES
 from squadops.stacks.development_profiles import (
     DevelopmentProfile,
@@ -57,6 +58,11 @@ _PLAN_SECTION = "## Validation Plan"
 #: The most of a file :func:`code_under_test` shows. A larger one, a vendored engine say, is named
 #: with its size: a suite that imports it needn't cost the prompt the whole of it.
 CODE_UNDER_TEST_MAX_CHARS = 16_000
+#: #3182 (SIP-0112 H.39): the most of a repository-backed product's tree a ``qa.test`` prompt
+#: shows, in characters. The 2.8 counted run's two ``qa.test`` prompts showed 18,478 and 19,330
+#: characters of the product (4 and 5 files), of a tree of 2.36 million. The cap is five times
+#: that: room for a suite with several files beside it, and a twenty-fifth of the tree.
+PRODUCT_CONTENTS_MAX_CHARS = 96_000
 #: The files whose imports :func:`code_under_test` reads.
 _READS_IMPORTS = (".py", *ECMASCRIPT_SUFFIXES)
 #: A file that is its folder's module: Luau's and Python's.
@@ -74,7 +80,13 @@ def qa_test_prompt_contents(inputs: Mapping[str, Any]) -> dict[str, str]:
     twice: once under its section's name (#2809)."""
     contents = inputs.get("artifact_contents") or {}
     if inputs.get("subtask_focus") is not None:
-        scoped = package_scoped(contents, inputs.get("expected_artifacts") or [])
+        expected = inputs.get("expected_artifacts") or []
+        on_a_product = source_backed(inputs)
+        scoped = (
+            product_scoped(contents, expected, product_runners(inputs))
+            if on_a_product
+            else package_scoped(contents, expected)
+        )
         suite = {**scoped, **(inputs.get(RETAKE_CURRENT_FILES_KEY) or {})}
         under_test = code_under_test(
             suite,
@@ -82,6 +94,8 @@ def qa_test_prompt_contents(inputs: Mapping[str, Any]) -> dict[str, str]:
             _task_text(inputs),
             plan_sources=inputs.get("implementation_artifacts") or (),
         )
+        if on_a_product:
+            return within_the_product_cap(scoped, under_test, {str(e) for e in expected if e})
         return {**scoped, **under_test}
     profile = get_development_profile(effective_development_profile(inputs.get("resolved_config")))
     sources = source_files(contents, profile)
@@ -115,17 +129,102 @@ def package_scoped(
     (~18k tokens, every frontend .jsx included) into a backend suite task: prefill cost plus
     rambling pressure against the 8192 completion clamp, and the truncation crashed collection.
     No expected artifacts or no package match: contents unchanged (never starve the prompt)."""
-    packages = {
-        str(e).strip().lstrip("./").partition("/")[0] for e in (expected_artifacts or []) if e
-    }
+    packages = {_relative(e).partition("/")[0] for e in (expected_artifacts or []) if e}
     if not packages:
         return artifact_contents
     scoped = {
         name: content
         for name, content in artifact_contents.items()
-        if str(name).strip().lstrip("./").partition("/")[0] in packages
+        if _relative(name).partition("/")[0] in packages
     }
     return scoped or artifact_contents
+
+
+def product_runners(inputs: Mapping[str, Any]) -> tuple[tuple[tuple[str, ...], str], ...]:
+    """Each of the product's own runners as ``(roots, file_pattern)``, from the task's
+    ``source_repository`` (``checkout.RunnerView``; contract 8 requires its roots)."""
+    runners = (inputs.get("source_repository") or {}).get("runners") or ()
+    return tuple(
+        (tuple(str(r) for r in runner.get("roots") or ()), str(runner["file_pattern"]))
+        for runner in runners
+        if isinstance(runner, Mapping) and runner.get("file_pattern")
+    )
+
+
+def product_scoped(
+    artifact_contents: Mapping[str, str],
+    expected_artifacts: Iterable[Any],
+    runners: Iterable[tuple[tuple[str, ...], str]],
+) -> dict[str, str]:
+    """SIP-0112 H.39 (#3182): what a repository-backed product's ``qa.test`` is shown of the
+    product's tree before the code its text names: the files beside its suite, and the test
+    infrastructure. Never a whole top-level directory, and never the whole tree.
+
+    - **Beside its suite:** every file in the same directory as one of the task's expected
+      artifacts, that directory alone. A product's tests can live beside its source, where the
+      top-level directory is the source tree.
+    - **The test infrastructure:** every file directly under one of the product's runners'
+      roots, which is where a runner's own script and its shared setup sit. A root of ``.``
+      names the repository, whose top level is no test infrastructure, and adds nothing.
+
+    ``package_scoped`` is the sample applications' rule, whose top-level directories are a
+    backend and a frontend. On a product it showed 137 files for a suite under ``src/`` and the
+    whole tree, 234 files, when no directory matched (measured on #3182)."""
+    beside = {_directory(e) for e in expected_artifacts or [] if e}
+    roots = {_relative(root) for roots, _pattern in runners for root in roots} - {".", ""}
+    return {
+        name: content
+        for name, content in artifact_contents.items()
+        if _directory(name) in beside or _directory(name) in roots
+    }
+
+
+def _relative(path: Any) -> str:
+    """A path as the repository names it: no leading ``./`` and no slash at either end. A
+    leading dot that is part of a name is kept: ``.tools/run.luau`` is in ``.tools``, where
+    stripping every leading dot read it as ``tools`` (the MacBook lane's review of #3280), so
+    a runner rooted at a dot-directory never matched its own files."""
+    return str(path).strip().removeprefix("./").strip("/")
+
+
+def _directory(path: Any) -> str:
+    """The directory a repository-relative path is in, or ``""`` for the repository's root."""
+    return _relative(path).rpartition("/")[0]
+
+
+def within_the_product_cap(
+    scoped: Mapping[str, str], under_test: Mapping[str, str], suite: set[str]
+) -> dict[str, str]:
+    """The product's files a ``qa.test`` is shown, held to ``PRODUCT_CONTENTS_MAX_CHARS``.
+
+    The suite's own files and the code its text names or imports (``under_test``) are what the
+    task can't be written without, and are always shown: when they alone overrun the model's
+    window, the prompt guard refuses the prompt by name (SIP-0073), which is the hold. The
+    files beside the suite come after them, smallest first, while they fit. One that doesn't is
+    named with its size and not shown, so nothing is left out silently."""
+    essential = {name for name in scoped if name in suite} | set(under_test)
+    room = PRODUCT_CONTENTS_MAX_CHARS - sum(
+        len(content) for name, content in {**scoped, **under_test}.items() if name in essential
+    )
+    fits: set[str] = set()
+    for name, content in sorted(
+        ((n, c) for n, c in scoped.items() if n not in essential),
+        key=lambda item: (len(item[1]), item[0]),
+    ):
+        if len(content) <= room:
+            fits.add(name)
+            room -= len(content)
+    # In the order the prompt has always shown them: the suite's directory, then the code under
+    # test. A product whose files all fit is shown exactly what it was.
+    return {
+        name: content
+        if name in essential or name in fits
+        else (
+            f"(not shown: {len(content)} characters, past what this prompt shows of the "
+            "product beside the suite)"
+        )
+        for name, content in {**scoped, **under_test}.items()
+    }
 
 
 def code_under_test(

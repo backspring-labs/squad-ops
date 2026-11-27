@@ -5,6 +5,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Two diagnostics for the 2.9 certification window** (#3284; the pre-registration's cases 9 and 10). Neither is a
+  capability: a cycle that declares a fault is never counted.
+  - `campaign-increment-source-client-stops-corrected`: #3222's client-stops fault with in-run correction on, for
+    the setup failure SIP-0117 R5.32 attributes and repairs in the run.
+  - `luau_client_stalls_at_start`, declared by `campaign-increment-source-client-stalls`: the candidate's first
+    client script never finishes where the engine loads it and raises nothing, for the setup failure R5.32 must not
+    attribute. A Campaign's repair cycle is built without it.
+
 ### Changed
 - **The three dependency moves capped on 2026-11-15 are taken** (#3101, the 2.9 plan's item 14): FastAPI 0.135 to
   0.165 with Starlette 1.6 to 1.10, aio-pika 10.0 to 10.2 with aiormq 7.0 to 7.2, and ruff 0.16.6 to 0.17.5.
@@ -25,6 +34,22 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   file's end, any two open pull requests conflicted there, and each merge put every other one in conflict:
   on 2026-11-26 one pull request was resolved three times, each a push and a full CI run. An id held in two
   files is refused, and a test refuses a row appended to the old file.
+### Added
+- **A dedicated worker brings Studio to the front, inside its declared window** (#3193; SIP-0117 R5.33; the 2.9
+  plan's item 12): a scenario that clicks acts only on a Studio in front, and a worker that found another app in
+  front refused the play. On a worker its owner declares dedicated, inside the window its owner declares, the
+  runner may now bring the running Studio forward itself, once per operation.
+  - Only when every condition holds: the window, the operation's lease by the serving loop's own record, no
+    keyboard or mouse input for the threshold (at least 60 s), the screen unlocked and the session available,
+    the idle counter and the clock read again immediately before, and a proved Studio running.
+  - After it, Studio must read in front and the idle counter must show nobody arrived. Anything else, or anything
+    unread, is R5.18's refusal as before, flagged `tool_unready`.
+  - Each result records `front.activated`, `front.was`, `front.idle_s` and `front.refused`, never which app was in
+    front. The four settings are the owner's; the code ships with none, and without them nothing changes.
+  - R5.18's check now runs after the session opens and the running Studio is held to its proof.
+  - The runbook is `docs/ops/STUDIO_WORKER_RUNBOOK.md`.
+  - `scripts/dev/studio_worker_proof.py` passes the four settings, and names an owner for each round, which the
+    registry has required since R5.30 (#3282): on main the proof raised before its first round.
 
 ### Fixed
 - **A stop a skill declares outranks the task's own requirements** (#3240; SIP-0116 §17aa; the 2.9 plan's
@@ -43,6 +68,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   - The plan's authors are shown what each runner collects first (`request.plan_test_runners_appendix`).
   - Replayed over 128 stored plans of four products, it refuses none.
   - Still to come under #3182: the cap on what a `qa.test` is shown, with its replay.
+- **On a product, a `qa.test` is shown what is beside its suite, and never the tree** (#3182, the prompt half;
+  SIP-0112 H.39; the 2.9 plan's item 8): a suite whose file sat in a source folder was shown that whole
+  top-level directory, and one whose folder matched nothing was shown the whole tree: 141 files and 201 files
+  on the product measured.
+  - It is now shown the files in its own folder, the files directly under the product runners' roots, and the
+    code its text names or imports, held to 96,000 characters. A file beside the suite that doesn't fit is
+    named with its size and not shown.
+  - The 2.8 counted run's two `qa.test` prompts are shown exactly what they were shown then.
+  - A sample application's suite is scoped as before.
 - **A cancelled play names what it had run on** (#3236's MacBook half; SIP-0117 R5.34; the 2.9 plan's item 2). The
   worker answers a cancelled run, and a tool that raised, with an `interrupted` of its own, and that result carried
   an empty `ran_with`. So a play cancelled part way named no Studio, place or harness.
@@ -84,6 +118,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   - The worker's refusal names the tools that differ: `(changed script_read)`, with added and removed beside it.
   - A pin written under `/2` still pins. Against it the comparison reads unavailable, and the record that
     replaces it holds `tools_changed: null`, never an empty list.
+- **An agent's remote operation is owned by the cycle the runtime holds, and by that cycle's Campaign** (#3236;
+  SIP-0117 R5.35): the agent's create route took the owning cycle on the body's word. It now reads the cycle,
+  refuses one the runtime doesn't hold (`REMOTE_OPERATION_OWNER_UNKNOWN`), and writes the cycle's own Campaign
+  onto the operation, so a Campaign's abort reaches it directly.
 - **Every view of a cycle reads the same status and names the same ending** (#3224, #3244; the 2.9 plan's
   item 3):
   - **The list's status filter reads what the cycle's own row reads** (#3224). It read the latest run alone,
@@ -97,6 +135,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     not itself marked cancelled read `created`; it reads `cancelled`.
   - The workload-progress alignment and the reading moved from the API's mapping into `cycles/lifecycle.py`,
     so the route, the list and the registries share one definition.
+- **A hand play's log carries `ran_with`** (#3243; the 2.9 plan's item 10): `scripts/dev/studio_play_scenario.py`
+  printed a play's status, its assertions and its evidence, and dropped the result's `ran_with`. So a hand play's
+  log named neither the Studio it ran on nor the qualification it was held to, and the identity of the 32 hand
+  plays of 2026-11-20 had to be read another way.
+  - The script prints every `ran_with` entry: the qualified and played identities, `qualified_by`, the place
+    baseline, the source revision and the harness digests.
+  - It says whether the play ran on the qualified Studio, and names the parts that differ when it didn't
+    (`runner.identity_difference`). A result with no `ran_with`, or with no Studio identity in it, says so.
 - **A recorded artifact the vault can't return ends the run by name** (#3128, the 2.9 plan's item 4): the
   executor's reads inside a run caught a failed retrieval, logged it and went on. The run then continued without
   its plan, its skeleton, a checkpoint's file or a seed, and a PRD that couldn't be read was handed to every

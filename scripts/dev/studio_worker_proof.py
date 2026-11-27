@@ -29,9 +29,11 @@ import os
 import platform
 import sys
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 from adapters.remote_execution.game_dev_roblox_studio import worker as studio_worker
+from adapters.remote_execution.game_dev_roblox_studio.front import SETTINGS as FRONT_SETTINGS
 from adapters.remote_execution.game_dev_roblox_studio.runner import OPERATION, PROVIDER
 from adapters.remote_execution.game_dev_roblox_studio.vocabulary import VOCABULARY
 from adapters.remote_execution.memory_worker_registry_store import MemoryWorkerRegistryStore
@@ -43,6 +45,9 @@ from squadops.remote_execution.serving import Worker
 from squadops.remote_execution.workers import Enqueued, Enrolment, OperationState
 
 _PREFIX = "SQUADOPS__WORKER__"
+#: Whose operations the proof's are (R5.30, #3282): an operation names its owner, or the registry
+#: refuses it. The proof's registry is its own, in this process, and holds no cycle.
+OWNER = {"cycle_id": "cyc_studio_worker_proof"}
 #: How long a round may take before the proof gives up on it.
 ROUND_SECONDS = 600.0
 #: How long round 2 plays before it is cancelled.
@@ -92,9 +97,7 @@ def _request(repo: Path, scenario_file: Path, round_no: int) -> RemoteOperationR
 
 
 async def _round(registry, request, *, cancel_after: float | None = None) -> bool:
-    queued = await registry.enqueue(
-        request, {"requested_by": "studio_worker_proof"}, max_attempts=1, only_with_worker=True
-    )
+    queued = await registry.enqueue(request, OWNER, max_attempts=1, only_with_worker=True)
     if not isinstance(queued, Enqueued):
         print(f"  not queued: {queued}")
         return False
@@ -123,10 +126,23 @@ async def _round(registry, request, *, cancel_after: float | None = None) -> boo
     return False
 
 
+def worker_settings(environ: Mapping[str, str]) -> dict[str, str]:
+    """The worker's ``roblox-studio`` settings, as the worker reads them: each one it requires,
+    and each of R5.33's four optional ones that is written (#3193). An optional setting left out
+    is never defaulted, so a proof on a worker its owner hasn't declared dedicated refuses as
+    the worker does."""
+    return {
+        **{name: environ.get(_PREFIX + name.upper(), "") for name in studio_worker.SETTINGS},
+        **{
+            name: environ[_PREFIX + name.upper()]
+            for name in FRONT_SETTINGS
+            if _PREFIX + name.upper() in environ
+        },  # fmt: skip
+    }
+
+
 async def _main(repo: Path, scenario_file: Path) -> int:
-    runner = studio_worker.create_runner(
-        {name: os.environ.get(_PREFIX + name.upper(), "") for name in studio_worker.SETTINGS}
-    )
+    runner = studio_worker.create_runner(worker_settings(os.environ))
     registry = WorkerRegistry(MemoryWorkerRegistryStore())
     worker = Worker(
         InProcessWorkerApi(registry),

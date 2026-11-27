@@ -44,10 +44,17 @@ import shutil
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
 from adapters.remote_execution.game_dev_roblox_studio import harness, place, play
+from adapters.remote_execution.game_dev_roblox_studio.front import (
+    FrontPolicy,
+    FrontRecord,
+    bring_studio_forward,
+    front_was,
+)
 from adapters.remote_execution.game_dev_roblox_studio.session import (
     StudioMcpSession,
     StudioSessionError,
@@ -61,6 +68,7 @@ from adapters.remote_execution.game_dev_roblox_studio.studio_app import (
 )
 from adapters.remote_execution.game_dev_roblox_studio.vocabulary import VOCABULARY
 from squadops.ports.remote_execution import OperationRunnerPort
+from squadops.remote_execution.held_lease import current as current_lease
 from squadops.remote_execution.models import (
     AssertionRecord,
     EvidenceItem,
@@ -122,6 +130,21 @@ class StudioIdentity:
             f"{role}.studio_channel": self.studio_channel,
             f"{role}.studio_tools": self.studio_tools,
         }
+
+
+#: The parts of a Studio's identity, in the order ``StudioIdentity.named`` gives them.
+IDENTITY_PARTS = ("studio_version", "studio_channel", "studio_tools")
+
+
+def identity_difference(ran_with: Mapping[str, str]) -> tuple[str, ...] | None:
+    """The parts of the played Studio's identity that differ from the qualified one's, read from
+    a result's ``ran_with`` (#3243). ``()`` when they are equal, and ``None`` when the result
+    names neither identity: one refused before the running Studio was read."""
+    qualified = {p: ran_with.get(f"qualified.{p}") for p in IDENTITY_PARTS}
+    played = {p: ran_with.get(f"played.{p}") for p in IDENTITY_PARTS}
+    if all(v is None for v in (*qualified.values(), *played.values())):
+        return None
+    return tuple(p for p in IDENTITY_PARTS if qualified[p] != played[p])
 
 
 @dataclass(frozen=True)
@@ -206,8 +229,14 @@ class RobloxStudioRunner(OperationRunnerPort):
         app: StudioApp | None = None,
         quit_seconds: float = 20.0,
         reopen_seconds: float = 120.0,
+        front_policy: FrontPolicy | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._studio_mcp = studio_mcp
+        # R5.33 (#3193): the worker's declaration of a dedicated window, as its owner wrote it.
+        # None declared reads as not dedicated, and R5.18's refusal stands as before.
+        self._front_policy = front_policy or FrontPolicy()
+        self._clock = clock or (lambda: datetime.now(UTC))
         self._files = place_files
         self._proved = proved_on
         # ``StudioMCP`` sits at ``…/RobloxStudio.app/Contents/MacOS/StudioMCP``.
@@ -343,16 +372,11 @@ class RobloxStudioRunner(OperationRunnerPort):
         """One attempt at the transaction. Raises :class:`_Drifted`, before anything is
         written, when the place isn't its pinned baseline."""
         self._established = dict(self._run_facts)
-        if any(a.action in play.STUDIO_INPUT_ACTIONS for a in (*declaration.setup,
-                                                                *declaration.steps)):  # fmt: skip
-            behind = self._studio_behind()
-            if behind:
-                return self._ended(request, OperationStatus.NOT_EXECUTED,
-                                   "nothing was run: the scenario acts through Studio's input, "
-                                   f"which acts only on a Studio in front, and {behind}",
-                                   tool_unready=True)  # fmt: skip
+        uses_input = any(a.action in play.STUDIO_INPUT_ACTIONS for a in (*declaration.setup,
+                                                                          *declaration.steps))  # fmt: skip
         session = self._session(harness=True)
         playing = False
+        front: FrontRecord | None = None
         try:
             check = await session.open()
             live = self._held_to_proof(check, proved)
@@ -365,6 +389,14 @@ class RobloxStudioRunner(OperationRunnerPort):
                     **({"qualified_by": proved.record[:16]} if proved.record else {}),
                 }
             )
+            if uses_input:
+                # R5.18 after R2.4 and R5.29 (R5.33's condition 6): the Studio a dedicated
+                # worker would bring forward is a proved one, already running.
+                front, refused = self._in_front(request)
+                if refused is not None:
+                    return refused
+                # Once read: a play cancelled from here on names how Studio came to the front.
+                self._establish(front.ran_with() if front is not None else {})
             studio = await place.identity(session, discover_seconds=self._discover_seconds)
             sid = studio.studio_id
             pinned = await place.baseline(session, sid)
@@ -476,6 +508,32 @@ class RobloxStudioRunner(OperationRunnerPort):
     def _establish(self, facts: Mapping[str, str]) -> None:
         self._established.update(facts)
 
+    def _in_front(
+        self, request: RemoteOperationRequest
+    ) -> tuple[FrontRecord | None, RemoteOperationResult | None]:
+        """R5.18's check, with R5.33's activation before its refusal. Returns the front record
+        (``None`` when Studio was in front already) and the refusal, when there is one."""
+        behind = self._studio_behind()
+        if not behind:
+            return None, None
+        front = bring_studio_forward(
+            self._app,
+            self._front_policy,
+            lease=current_lease(),
+            was=front_was(self._app),
+            clock=self._clock,
+        )
+        if front.activated:
+            return front, None
+        return front, self._ended(
+            request,
+            OperationStatus.NOT_EXECUTED,
+            "nothing was run: the scenario acts through Studio's input, which acts only on a "
+            f"Studio in front, and {behind}. It wasn't brought forward: {front.reason}",
+            tool_unready=True,
+            ran_with=front.ran_with(),
+        )
+
     def _studio_behind(self) -> str:
         """``""`` when a Studio is the app in front, or what is in front instead."""
         try:
@@ -495,6 +553,7 @@ class RobloxStudioRunner(OperationRunnerPort):
         reason: str,
         *,
         tool_unready: bool = False,
+        ran_with: Mapping[str, str] | None = None,
     ) -> RemoteOperationResult:
         """``tool_unready`` (#3192) marks a ``not_executed`` whose cause is this Mac's Studio and
         never the request: not in front, not the proved version, channel or tool list, busy, or
@@ -507,6 +566,7 @@ class RobloxStudioRunner(OperationRunnerPort):
             provider_version=f"{PROVIDER}@{PROVIDER_VERSION}",
             dispatch_id=request.dispatch_id,
             tool_unready=tool_unready,
+            ran_with=dict(ran_with or {}),
         )
 
     async def live_studio(self) -> tuple[StudioIdentity, ToolCheck]:

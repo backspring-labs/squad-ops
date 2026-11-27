@@ -1,0 +1,11 @@
+checks:
+  - id: "3284-certification-diagnostics"
+    what: the dev agent holds the stall fault, which a Campaign's repair cycle is built without, and the runtime loads the certification window's two diagnostic profiles, each the source increment with its fault and in-run correction on (#3284)
+    container: squadops-neo
+    code: |
+      from squadops.capabilities.handlers.fault_injection import FAULTS, LUAU_CLIENT_STALL, bound_cycle_faults
+      from squadops.contracts.cycle_request_profiles import load_profile
+      corrected = load_profile("campaign-increment-source-client-stops-corrected").defaults
+      stalls = load_profile("campaign-increment-source-client-stalls").defaults
+      print("error(" in LUAU_CLIENT_STALL, bound_cycle_faults(["luau_client_stalls_at_start"]), corrected["fault_injection"], corrected["max_correction_attempts"], stalls["fault_injection"], stalls["max_correction_attempts"])
+    expect: "False [] ['luau_client_throws_at_start'] 3 ['luau_client_stalls_at_start'] 3"

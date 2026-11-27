@@ -104,6 +104,8 @@ def test_every_profile_is_the_operators_the_campaigns_or_a_released_one():
         "campaign-increment-source",
         "campaign-increment-source-wrong-text",
         "campaign-increment-source-client-stops",
+        "campaign-increment-source-client-stops-corrected",
+        "campaign-increment-source-client-stalls",
     }
 
 

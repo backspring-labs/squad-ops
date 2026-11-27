@@ -10,6 +10,12 @@ answered). These are what the adapter asks of the Mac, behind :class:`StudioApp`
 stand in for them. :class:`MacStudioApp` is the real one: ``pgrep``, a signal, ``open -a``,
 ``lsappinfo`` and ``lsof``.
 
+**Whether a person is at the Mac** (#3193) is read here too, for a dedicated worker that brings
+Studio to the front itself: how long since the last keyboard or mouse input, and whether the
+screen is locked. Both come from ``ioreg``, which needs no macOS permission, so no prompt can wait
+on a person who isn't there. A reading that can't be made raises: an activation is never made on
+a guess.
+
 **Studio's release channel** (#3206) is read here too. Roblox's updater moves an install between
 channels at one version number, and a channel can carry another build or flag set. The running
 Studio names its channel once, in the startup log it holds open, so the channel read is the one
@@ -33,6 +39,13 @@ _STARTUP_LOG = re.compile(r"_Studio_[0-9A-Za-z]+_last\.log$")
 #: The line Studio names its channel on. The tag must be the line's own: a line a game script
 #: printed is tagged ``FLog::Output``, whatever its text says.
 _CHANNEL_LINE = re.compile(r"^[^\[]*\[FLog::ClientRunInfo\] The channel is (\S+)\s*$")
+#: The HID system's idle counter, in nanoseconds since the last keyboard, mouse or trackpad input.
+_IDLE_LINE = re.compile(r'"HIDIdleTime" = (\d+)')
+#: Whether the console session's screen is locked.
+_LOCKED_LINE = re.compile(r'"IOConsoleLocked" = (Yes|No)\b')
+#: The console session's own keys, inside ``IOConsoleUsers``.
+_ON_CONSOLE = re.compile(r'"kCGSSessionOnConsoleKey"=(Yes|No)')
+_LOGIN_DONE = re.compile(r'"kCGSessionLoginDoneKey"=(Yes|No)')
 
 
 @dataclass(frozen=True)
@@ -76,6 +89,24 @@ class StudioApp(Protocol):
     def channel(self) -> str:
         """The release channel the one running Studio started on (#3206). Raises ``OSError``
         naming why it can't be read. Nothing stands in for a channel that wasn't read."""
+        ...
+
+    def idle_seconds(self) -> float:
+        """Seconds since the last keyboard, mouse or trackpad input (#3193). Raises ``OSError``
+        when it can't be read."""
+        ...
+
+    def locked(self) -> bool:
+        """Whether the screen is locked (#3193). Raises ``OSError`` when it can't be read."""
+        ...
+
+    def session_available(self) -> bool:
+        """Whether the console session is on the console and logged in (#3193). Raises
+        ``OSError`` when it can't be read."""
+        ...
+
+    def activate(self) -> None:
+        """Bring the running Studio to the front (#3193), opening nothing."""
         ...
 
 
@@ -137,6 +168,55 @@ class MacStudioApp:
             )
         return channel_in(logs[0])
 
+    def idle_seconds(self) -> float:
+        return idle_seconds_in(_ioreg("-c", "IOHIDSystem"))
+
+    def locked(self) -> bool:
+        return locked_in(_ioreg("-n", "Root", "-d1"))
+
+    def session_available(self) -> bool:
+        return session_available_in(_ioreg("-n", "Root", "-d1"))
+
+    def activate(self) -> None:
+        # ``open -a`` brings a running app forward, and starts one that isn't running: the
+        # caller reads Studio's process immediately before (front.bring_studio_forward).
+        subprocess.run(["open", "-a", str(self._app)], check=True, timeout=30)
+
+
+def idle_seconds_in(ioreg: str) -> float:
+    """The idle counter in ``ioreg -c IOHIDSystem``'s output, in seconds. Raises ``OSError``
+    when the output holds no counter, or more than one that disagree: a reading of a person's
+    absence is never guessed."""
+    found = {int(n) for n in _IDLE_LINE.findall(ioreg)}
+    if len(found) != 1:
+        raise OSError(
+            f"ioreg -c IOHIDSystem gave {len(found)} idle counters ({sorted(found)}), and the "
+            "idle time is read from exactly one"
+        )
+    return found.pop() / 1_000_000_000
+
+
+def session_available_in(ioreg: str) -> bool:
+    """Whether ``ioreg -n Root -d1``'s output reads a console session that is on the console and
+    has finished logging in. Raises ``OSError`` when it names no console session."""
+    on = _ON_CONSOLE.findall(ioreg)
+    done = _LOGIN_DONE.findall(ioreg)
+    if not on or not done:
+        raise OSError("ioreg -n Root names no console session, so its availability can't be read")
+    return "Yes" in on and "Yes" in done
+
+
+def locked_in(ioreg: str) -> bool:
+    """Whether ``ioreg -n Root -d1``'s output reads the screen locked. Raises ``OSError`` when
+    it doesn't say."""
+    found = set(_LOCKED_LINE.findall(ioreg))
+    if len(found) != 1:
+        raise OSError(
+            f"ioreg -n Root gave {sorted(found) or 'no'} IOConsoleLocked values, and the lock "
+            "is read from exactly one"
+        )
+    return found.pop() == "Yes"
+
 
 def channel_in(log: Path) -> str:
     """The channel Studio's startup log names. Raises ``OSError`` for a log that can't be
@@ -161,6 +241,13 @@ def _startup_logs(pid: int) -> list[Path]:
     if not logs and done.returncode != 0:
         raise OSError(f"lsof -p {pid} failed: {done.stderr.strip() or done.returncode}")
     return logs
+
+
+def _ioreg(*args: str) -> str:
+    done = subprocess.run(["ioreg", *args], capture_output=True, text=True, timeout=10, check=False)
+    if done.returncode != 0:
+        raise OSError(f"ioreg {' '.join(args)} failed: {done.stderr.strip() or done.returncode}")
+    return done.stdout
 
 
 def _lsappinfo(*args: str) -> str:
