@@ -497,6 +497,32 @@ def skill_stops(skill_md: str) -> tuple[str, ...]:
     return _stops(header)
 
 
+def declared_stop_list(handed: Any) -> str:
+    """Each stop the task's handed skills declare (``stops`` in a ``SKILL.md``'s front matter),
+    as the section lists it: the skill's name, then each opening on a line of its own. ``""``
+    when none declares one.
+
+    An opening stands alone on its line. A model that quotes the list back then writes an
+    opening with nothing after it, which ``capabilities.skill_stops.read_stop`` never reads as a stop."""
+    lines: list[str] = []
+    for skill in handed or ():
+        text = skill["files"].get(SKILL_FILE, "")
+        try:
+            openings = skill_stops(text)
+            header, _ = parse_frontmatter(text)
+        except FrontmatterError as exc:
+            # Raised here too, by name: the budget's count reaches this before any rendering
+            # does, and a skill skipped would be a prompt measured short.
+            raise ValueError(
+                f"skill {skill['skillset']}/{skill['skill']}: {SKILL_FILE} front matter: {exc}"
+            ) from exc
+        if not openings:
+            continue
+        lines.append(f"From the skill {str(header.get('name') or skill['skill']).strip()}:")
+        lines.extend(f"- `{opening}`" for opening in openings)
+    return "\n".join(lines)
+
+
 def _stops(header: Mapping[str, Any]) -> tuple[str, ...]:
     value = header.get("stops")
     if value is None:

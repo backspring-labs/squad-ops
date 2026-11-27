@@ -27,6 +27,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   files is refused, and a test refuses a row appended to the old file.
 
 ### Fixed
+- **A stop a skill declares outranks the task's own requirements** (#3240; SIP-0116 §17aa; the 2.9 plan's
+  item 9): the skills section ranked every part of a skill below the task's requirements, so a task asked for
+  exactly one file could settle a skill's stop against itself and write the artifact the stop exists to
+  prevent. One replay generation in three did, and cited that sentence.
+  - The section now names a declared stop as the exception, beside the ordering and again where it ends, with
+    the stops the task's skills declare listed by their opening lines.
+  - A task whose skills declare none, and every task with no skills, renders the prompt it rendered before.
+  - Still to come under #3240: the replay that shows the model stops.
 - **On a product, a plan's `qa.test` names a file one of its runners collects** (#3182, the plan-gate half;
   SIP-0112 H.38; the 2.9 plan's item 8): a `qa.test` naming a source file or a note passed every plan gate,
   and its task was then shown most or all of the product to write a suite nothing runs.
