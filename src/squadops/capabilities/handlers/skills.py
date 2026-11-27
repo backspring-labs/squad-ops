@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from squadops.capabilities.handlers.task_instructions import fence_for
-from squadops.capabilities.skillsets import SKILL_FILE, SKILLS_INPUT
+from squadops.capabilities.skillsets import SKILL_FILE, SKILLS_INPUT, declared_stop_list
 from squadops.prompts.frontmatter import FrontmatterError, parse_frontmatter
 
 
@@ -27,9 +27,18 @@ async def skills_section(renderer: Any, inputs: dict[str, Any]) -> str:
             f"this task was handed {len(handed)} skills and has no renderer to show them with"
         )
     blocks = [await _skill_block(renderer, skill) for skill in handed]
-    rendered = await renderer.render(
-        "request.skills_section", {"skill_blocks": "\n\n".join(blocks)}
-    )
+    variables = {"skill_blocks": "\n\n".join(blocks)}
+    stop_list = declared_stop_list(handed)
+    if stop_list:
+        # #3240 (SIP-0116 §17aa): a stop a handed skill declares is an answer the task accepts,
+        # so the section says it outranks the task's own requirements, beside the ordering and
+        # again where the section ends, next to what the task is asked to emit. A task whose
+        # skills declare none renders the section it rendered before.
+        exception = await renderer.render("request.skills_stop_exception", {})
+        stops = await renderer.render("request.skills_declared_stops", {"stop_list": stop_list})
+        variables["stop_exception"] = " " + exception.content.strip()
+        variables["declared_stops"] = "\n\n" + stops.content.strip("\n")
+    rendered = await renderer.render("request.skills_section", variables)
     return "\n\n" + rendered.content.strip("\n") + "\n"
 
 

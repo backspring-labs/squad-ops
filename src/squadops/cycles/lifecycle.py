@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, StrEnum
 
 from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
 from squadops.cycles.models import (
     APPROVING_DECISIONS,
+    Cycle,
     CycleStatus,
     GateDecisionValue,
     IllegalStateTransitionError,
@@ -210,6 +211,18 @@ STATUS_OF_ENDING: dict[CycleStopReason, CycleStatus | None] = {
 
 _LIVE_RUN = frozenset({RunStatus.QUEUED.value, RunStatus.RUNNING.value, RunStatus.PAUSED.value})
 
+#: Endings whose status is their one run's (#3244). A one-workload cycle (a Campaign's repair or
+#: retry) ends ``single_workload_ended``, and how it ended is how that run ended. The record is
+#: still the cycle's ending, and the reading names it.
+_ENDINGS_READ_FROM_THEIR_RUN = frozenset({CycleStopReason.SINGLE_WORKLOAD_ENDED})
+
+#: How an ended run reads on its cycle, for an ending read from its run.
+_STATUS_OF_ENDED_RUN: dict[str, CycleStatus] = {
+    RunStatus.COMPLETED.value: CycleStatus.COMPLETED,
+    RunStatus.FAILED.value: CycleStatus.FAILED,
+    RunStatus.CANCELLED.value: CycleStatus.CANCELLED,
+}
+
 
 class StatusConflict(StrEnum):
     """Two records of one cycle that disagree, named on the read and never resolved silently."""
@@ -240,19 +253,27 @@ def read_cycle_status(
     """The cycle's status with its recorded ending authoritative (#3201).
 
     Precedence, in order:
-    1. no recorded ending, or one that isn't an ending (``STATUS_OF_ENDING`` is ``None``): the
-       runs and workloads decide, as ``resolve_cycle_status`` reads them;
+    1. no recorded ending, or one that isn't an ending (``STATUS_OF_ENDING`` is ``None``, and it
+       isn't a one-workload cycle's): the runs and workloads decide, as ``resolve_cycle_status``
+       reads them;
     2. a run newer than the ending's last run: the cycle was reopened after it ended, so the runs
        decide and the ending is history;
     3. a run from before the ending still live: the runs decide, and the conflict is named;
     4. otherwise the ending decides. A cancellation on top of an ending that wasn't one is named
        as the conflict, and the ending stands, because it was recorded first: cancelling a live
        cycle ends its run cancelled, which records ``run_cancelled``.
+
+    A one-workload cycle's ending (``single_workload_ended``, #3244) goes through 2 and 3 like any
+    other and is named as the cycle's ending. Its status is its one run's: completed, failed or
+    cancelled. Before #3244 the reading named no ending for it, so an ended repair cycle couldn't
+    be told from one never ended, and a cancelled run on a cycle not itself cancelled read
+    ``created``.
     """
 
     derived = resolve_cycle_status(runs, cycle_cancelled, workload_statuses=workload_statuses)
     ending_status = STATUS_OF_ENDING[end.stopped_because] if end is not None else None
-    if end is None or ending_status is None:
+    from_its_run = end is not None and end.stopped_because in _ENDINGS_READ_FROM_THEIR_RUN
+    if end is None or (ending_status is None and not from_its_run):
         return CycleReading(derived, None, None)
     last = next((r for r in runs if r.run_id == end.last_run_id), None)
     if last is not None and any(r.run_number > last.run_number for r in runs):
@@ -263,12 +284,90 @@ def read_cycle_status(
             derived if derived in (CycleStatus.ACTIVE, CycleStatus.PAUSED) else CycleStatus.ACTIVE
         )
         return CycleReading(live, end.stopped_because, StatusConflict.RUN_LIVE_AFTER_ENDING)
+    # #3244: no run is live here, so the run a one-workload cycle's record names has ended, and
+    # its ending is the cycle's.
+    decided = (
+        (_STATUS_OF_ENDED_RUN.get(last.status) if last is not None else None)
+        if from_its_run
+        else ending_status
+    )
+    if decided is None:
+        # The record names a run the registry doesn't hold, which can't say how the cycle
+        # ended: the runs decide the status, and the record is still named.
+        return CycleReading(derived, end.stopped_because, None)
     conflict = (
         StatusConflict.CANCELLED_AFTER_ENDING
-        if cycle_cancelled and ending_status is not CycleStatus.CANCELLED
+        if cycle_cancelled and decided is not CycleStatus.CANCELLED
         else None
     )
-    return CycleReading(ending_status, end.stopped_because, conflict)
+    return CycleReading(decided, end.stopped_because, conflict)
+
+
+@dataclass(frozen=True)
+class WorkloadProgress:
+    """One entry of a cycle's workload sequence, and the run it has reached (SIP-0083 §5.8)."""
+
+    index: int
+    workload_type: str
+    run_id: str | None
+    #: ``pending``, ``running``, ``gate_awaiting``, ``completed``, ``failed`` or ``rejected``.
+    status: str
+
+
+#: A run's status in the workload-progress vocabulary. Raw status values are never passed through.
+_PROGRESS_OF_RUN: dict[str, str] = {
+    RunStatus.QUEUED.value: "pending",
+    RunStatus.RUNNING.value: "running",
+    RunStatus.PAUSED.value: "gate_awaiting",
+    RunStatus.COMPLETED.value: "completed",
+    RunStatus.FAILED.value: "failed",
+}
+
+
+def workload_progress(
+    workload_sequence: Sequence[Mapping], runs: Sequence[Run]
+) -> list[WorkloadProgress]:
+    """A cycle's workload progress, by positional alignment (SIP-0083 §5.8): its runs that
+    weren't cancelled, in run order, against its workload sequence. A run whose workload's gate
+    was rejected reads ``rejected``, and a workload no run has reached reads ``pending``."""
+    reached = sorted(
+        (r for r in runs if r.status != RunStatus.CANCELLED.value), key=lambda r: r.run_number
+    )
+    entries = []
+    for i, workload in enumerate(workload_sequence):
+        workload_type = workload.get("type", "unknown")
+        if i >= len(reached):
+            entries.append(WorkloadProgress(i, workload_type, None, "pending"))
+            continue
+        run = reached[i]
+        gate_name = workload.get("gate")
+        rejected = gate_name and any(
+            gd.decision == GateDecisionValue.REJECTED
+            for gd in run.gate_decisions
+            if gd.gate_name == gate_name
+        )
+        status = "rejected" if rejected else _PROGRESS_OF_RUN.get(run.status, run.status)
+        entries.append(WorkloadProgress(i, workload_type, run.run_id, status))
+    return entries
+
+
+def cycle_reading(cycle: Cycle, runs: Sequence[Run], end: RecordedEnd | None) -> CycleReading:
+    """A cycle's status as every view of it reads it: its recorded ending first, then its runs
+    and its workload progress (SIP-0083 D5). The one reading, for the cycle's own row, the list's
+    status filter (#3224) and every caller that asks whether a cycle has ended:
+    - a campaign's abort read only the latest run (``derive_cycle_status``), so a cycle waiting
+      between workloads read ``completed`` there and ``active`` on its row, and the abort left it
+      running (#2214);
+    - a cycle a campaign ended at the gate kept pending workloads, so it read ``active`` until an
+      abort cancelled it 40 minutes after it ended (#3201). Its ``cycle_ends`` row now decides;
+    - the list's filter read the latest run alone, so ``--status completed`` returned a cycle
+      whose own row read ``failed`` (#3224).
+
+    ``end`` is required, never defaulted: a caller that skips the end record reads #3201 again."""
+    progress = workload_progress(cycle.resolved_config().get("workload_sequence", []), runs)
+    return read_cycle_status(
+        runs, cycle.cancelled, [e.status for e in progress] if progress else None, end
+    )
 
 
 class WorkloadStranding(Enum):

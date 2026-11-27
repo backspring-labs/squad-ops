@@ -49,7 +49,7 @@ from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
 from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
 from squadops.capabilities.repair_prompt_contents import REPAIR_BASE_INPUTS, repair_prompt_contents
-from squadops.capabilities.skillsets import SKILLS_INPUT
+from squadops.capabilities.skillsets import SKILLS_INPUT, declared_stop_list
 from squadops.llm.model_registry import get_model_spec, thinking_headroom
 from squadops.memory.lessons import _tokens
 from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
@@ -161,10 +161,20 @@ def skills_framing_tokens(envelope: TaskEnvelope) -> int:
     if not handed:
         return 0
     resources = sum(max(0, len(skill["files"]) - 1) for skill in handed)
+    # #3240: the text a declared stop adds to the section, for a task whose skills declare one.
+    stop_list = declared_stop_list(handed)
+    stops = (
+        _prose("request.skills_stop_exception")
+        + _prose("request.skills_declared_stops")
+        + _tokens(stop_list)
+        if stop_list
+        else 0
+    )
     return (
         _prose("request.skills_section")
         + len(handed) * _prose("request.skill")
         + resources * _prose("request.skill_resource")
+        + stops
     )
 
 

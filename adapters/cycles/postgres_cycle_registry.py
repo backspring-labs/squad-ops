@@ -26,7 +26,7 @@ from squadops.cycles.failure_records import FailureRecord, FailureRecordState
 from squadops.cycles.lifecycle import (
     GATE_REJECTED_STATES,
     TERMINAL_STATES,
-    derive_cycle_status,
+    cycle_reading,
     validate_run_transition,
 )
 from squadops.cycles.models import (
@@ -189,11 +189,16 @@ class PostgresCycleRegistry(CycleRegistryPort):
             rows = await self._cycle_rows(project_id, limit, offset, created_before)
             return [self._row_to_cycle(r) for r in rows]
 
-        # #1891: the filter comes before the page, as the port says. Status is derived from
-        # each cycle's latest run (D6), so the project is read newest first in batches until
-        # the page is filled; filtering one LIMIT'd page returned "the matches among the newest
-        # 50", which the API showed as the project's history (11 of 156 failed cycles). Each
-        # batch's latest runs are one query (#1976), not one per cycle.
+        # #1891: the filter comes before the page, as the port says. A cycle's status is read
+        # from its runs, its workload progress and its recorded ending, so the project is read
+        # newest first in batches until the page is filled; filtering one LIMIT'd page returned
+        # "the matches among the newest 50", which the API showed as the project's history (11
+        # of 156 failed cycles).
+        # #3224: the reading is the cycle's own row's (``lifecycle.cycle_reading``). It read the
+        # latest run alone, so ``--status completed`` returned a cycle whose row read ``failed``.
+        # Each batch costs five reads whatever its size (#1976): its runs, their gate decisions,
+        # binding holds and halts (``list_runs_for_cycles``, as the cycle list's rows are read),
+        # and its recorded endings.
         matched: list[Cycle] = []
         read = 0
         while len(matched) < offset + limit:
@@ -201,14 +206,14 @@ class PostgresCycleRegistry(CycleRegistryPort):
             if not rows:
                 break
             read += len(rows)
-            latest_runs = await self._latest_runs([row["cycle_id"] for row in rows])
+            ids = [row["cycle_id"] for row in rows]
+            runs = await self.list_runs_for_cycles(ids)
+            ends = await self.get_cycle_ends(ids)
             for row in rows:
-                latest = latest_runs.get(row["cycle_id"])
-                derived = derive_cycle_status(
-                    [latest] if latest else [], cycle_cancelled=row["cancelled"]
-                )
-                if derived == status:
-                    matched.append(self._row_to_cycle(row))
+                cycle = self._row_to_cycle(row)
+                reading = cycle_reading(cycle, runs[cycle.cycle_id], ends.get(cycle.cycle_id))
+                if reading.status == status:
+                    matched.append(cycle)
             if len(rows) < _STATUS_SCAN_BATCH:
                 break  # a short batch is the project's last
         return matched[offset : offset + limit]
@@ -1064,22 +1069,6 @@ class PostgresCycleRegistry(CycleRegistryPort):
             plan_delta_refs=tuple(row["plan_delta_refs"]),
             created_at=row["created_at"],
         )
-
-    async def _latest_runs(self, cycle_ids: list[str]) -> dict[str, Run]:
-        """Each cycle's most recent run, for status derivation (D6), in two queries; a cycle
-        with no run has no key."""
-        if not cycle_ids:
-            return {}
-        async with self._retry.acquire(self._pool) as conn:
-            rows = await conn.fetch(
-                "SELECT DISTINCT ON (cycle_id) * FROM cycle_runs WHERE cycle_id = ANY($1) "
-                "ORDER BY cycle_id, run_number DESC",
-                cycle_ids,
-            )
-            gates_by_run = await self._gates_by_run(conn, [r["run_id"] for r in rows])
-        return {
-            r["cycle_id"]: self._assemble_run(r, gates_by_run.get(r["run_id"], [])) for r in rows
-        }
 
 
 # --- Helpers ---
