@@ -92,6 +92,10 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     play whose outcomes differ, and reads the median's cut against the 20% target;
   - `host-bar` reads a `host_quiet_reading.py` document against the bar a set's start and end must meet. An
     unread reading misses it.
+- **The measured sets' quiet bar reads this Mac with Studio idling** (#3250; the certification pre-registration's
+  amendment 13d, the owner's ruling of 2026-11-27): `measured_play_set.py host-bar start` holds the 1-minute load
+  under 2.5, where it held it under 2.0. The 2.0 came from a reading with Studio closed, and a set can only start
+  with it open. Each miss now states the bar it missed from the bar itself.
 - **Isolation between Studio plays is read by a sequence played through the runtime** (#3250; the certification
   pre-registration's amendment 13b, its case 12). `scripts/dev/play_isolation_sequence.py` builds three trees
   from the pinned commit (the baseline, one whose scripts leave seven marks, one that reports each mark as

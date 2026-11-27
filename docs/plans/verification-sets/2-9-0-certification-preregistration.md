@@ -514,7 +514,8 @@ container:
 a `host_quiet_reading.py` document (schema `squadops.host-quiet-reading/1`). A reading that wasn't taken misses
 the bar. Docker answering that it isn't running meets "no container running". A Docker that didn't answer in
 time misses it, since a hung daemon can still have containers at work.
-- **At a set's start:** the 1-minute load under 2.0 and the 15-minute load under 3.0; free memory at 70% or
+- **At a set's start** (the 1-minute figure is amended to 2.5 by 13d): the 1-minute load under 2.0 and the
+  15-minute load under 3.0; free memory at 70% or
   more; no container running; no model loaded; every process that isn't Studio, the worker, Docker or Ollama
   together under 100% CPU.
 - **At a set's end:** no container running and no model loaded. A set of plays raises the load and Studio's
@@ -653,3 +654,36 @@ not by its definition, so no second file can drift from the first.
 `blocked_unverified` with no correction, which is what case 10 reads. The Campaign then routes §10 row 8, as it
 does for any unread candidate, and its repair cycle is built without the fault. That repair is the Campaign's
 own design and is reported, and it is not part of case 10's pass condition.
+
+### 13d. The quiet bar's 1-minute load is 2.5, read with Studio idling (2026-11-27)
+
+**What changed.** 13a's point 4 held a measured set's start to a 1-minute load under 2.0. It is now under 2.5.
+Every other line of the bar stands: the 15-minute load under 3.0, free memory at 70% or more, no container
+running, no model loaded, the other processes together under 100% CPU, and the end bar as it was. A start
+reading that misses still waits, and a reading that wasn't taken still misses.
+
+**Who ruled.** The owner, on 2026-11-27, on the Spark lane's recommendation: "Yes - one hour of waiting is
+pointless."
+
+**The evidence.**
+- **The bar was set from the wrong reading.** 13a took 2.0 from a reading with Studio and the worker not
+  running (load 1.17 at 01:21 ET; PR #3286, comment 7211459597). A set can only start with Studio open, and
+  Studio idling used between 43 and 56% of a core in each of the seventeen host readings kept on 2026-11-27,
+  and between 44 and 51% in all but two.
+- **With Studio idling the Mac sits between 2.0 and 2.5.** Before the after set's rehearsal, eleven readings
+  three minutes apart read 2.41, 2.46, 2.14, 2.29, 2.16, 2.05, 2.06, 2.46, 2.78, 2.36 and 1.92. The set waited
+  31 minutes for the last one. Ten of the eleven are under 2.5, so under the new bar it would have started on
+  the first.
+- **The start's load doesn't move the plays.** Both sets ended above 2.0 by their own doing (2.26 and 2.52).
+  The plays of one set spread over about 2.5 s, and the change measured is 22 s. The rehearsal's set started at
+  1.92, ended at 2.52, and every play ran between 74.9 and 77.3 s by the runtime's record of the set.
+- **Both sets are held to one bar.** The before set's start reading was 1.87, which meets 2.0 and 2.5 alike.
+
+**Why it is an amendment and not a quiet edit.** The bar was loosened after a set had been played under it and
+after a rehearsal had shown the result. That is the order in which a test gets bent, so the change is the
+owner's, it is written before the counted after set, and the reason is that the bar was miscalibrated, not that
+a set missed it. No set has missed it.
+
+**What it gives up.** A counted after set may now start on a Mac up to 0.6 of a load point busier than the
+before set's start (1.87). The record shows all four readings side by side, so a reader can see how far apart they
+were.

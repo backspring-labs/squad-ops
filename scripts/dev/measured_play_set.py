@@ -70,7 +70,10 @@ TARGET_CUT = 0.20
 #: The bar a measured set's host readings must meet (the pre-registration's amendment 13a).
 #: At a set's start: the Mac is settled and nothing but Studio and the worker is at work.
 START_BAR = {
-    "load_1m_under": 2.0,
+    # 2.5, by the owner's ruling of 2026-11-27 (amendment 13d): with Studio idling, as it must be
+    # for a set to start, this Mac's 1-minute load sits between 2.0 and 2.5. It was 2.0, set from
+    # a reading taken with Studio closed.
+    "load_1m_under": 2.5,
     "load_15m_under": 3.0,
     "memory_free_percent_at_least": 70,
     "other_cpu_percent_under": 100.0,
@@ -335,9 +338,11 @@ def _load(reading: Mapping[str, Any]) -> list[str]:
         return [f"the load average wasn't read: {load}"]
     misses = []
     if not load[0] < START_BAR["load_1m_under"]:
-        misses.append(f"the 1-minute load is {load[0]}, not under 2.0")
+        misses.append(f"the 1-minute load is {load[0]}, not under {START_BAR['load_1m_under']:.1f}")
     if not load[2] < START_BAR["load_15m_under"]:
-        misses.append(f"the 15-minute load is {load[2]}, not under 3.0")
+        misses.append(
+            f"the 15-minute load is {load[2]}, not under {START_BAR['load_15m_under']:.1f}"
+        )
     return misses
 
 
@@ -346,7 +351,7 @@ def _free_memory(reading: Mapping[str, Any]) -> list[str]:
     if not isinstance(free, int) or isinstance(free, bool):
         return [f"the free memory wasn't read: {free}"]
     if free < START_BAR["memory_free_percent_at_least"]:
-        return [f"free memory is {free}%, under 70%"]
+        return [f"free memory is {free}%, under {START_BAR['memory_free_percent_at_least']}%"]
     return []
 
 
@@ -356,7 +361,10 @@ def _other_processes(reading: Mapping[str, Any]) -> list[str]:
     if not isinstance(other, Mapping) or "cpu_percent" not in other:
         return ["the other processes weren't read"]
     if not other["cpu_percent"] < START_BAR["other_cpu_percent_under"]:
-        return [f"other processes use {other['cpu_percent']}% CPU, not under 100%"]
+        return [
+            f"other processes use {other['cpu_percent']}% CPU, "
+            f"not under {START_BAR['other_cpu_percent_under']:g}%"
+        ]
     return []
 
 

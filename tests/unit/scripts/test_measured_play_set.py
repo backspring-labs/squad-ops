@@ -378,10 +378,19 @@ def test_a_settled_mac_meets_the_start_bar():
     assert measured.host_bar(QUIET, "start") == []
 
 
+@pytest.mark.parametrize("load_1m", [1.87, 1.92, 2.41, 2.49])
+def test_the_start_bar_is_this_mac_with_studio_idling(load_1m):
+    """Amendment 13d, the owner's ruling of 2026-11-27. Bug caught: the bar left at 2.0, which
+    was set from a reading with Studio closed, so a set that can only start with Studio open
+    waited half an hour for a reading under it. 1.87 and 1.92 are the two sets' own start
+    readings, which meet either bar; 2.41 is one that used to miss."""
+    assert measured.host_bar({**QUIET, "load_average": [load_1m, 2.3, 2.3]}, "start") == []
+
+
 @pytest.mark.parametrize(
     ("change", "miss"),
     [
-        ({"load_average": [2.0, 2.1, 2.2]}, "the 1-minute load is 2.0, not under 2.0"),
+        ({"load_average": [2.5, 2.1, 2.2]}, "the 1-minute load is 2.5, not under 2.5"),
         ({"load_average": [1.0, 2.9, 3.4]}, "the 15-minute load is 3.4, not under 3.0"),
         ({"memory_free_percent": 69}, "free memory is 69%, under 70%"),
         ({"models_loaded": ["some-model:7b"]}, "1 models are loaded"),
