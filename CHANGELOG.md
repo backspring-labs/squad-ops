@@ -52,6 +52,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   - The plan's authors are shown what each runner collects first (`request.plan_test_runners_appendix`).
   - Replayed over 128 stored plans of four products, it refuses none.
   - Still to come under #3182: the cap on what a `qa.test` is shown, with its replay.
+- **On a product, a `qa.test` is shown what is beside its suite, and never the tree** (#3182, the prompt half;
+  SIP-0112 H.39; the 2.9 plan's item 8): a suite whose file sat in a source folder was shown that whole
+  top-level directory, and one whose folder matched nothing was shown the whole tree: 141 files and 201 files
+  on the product measured.
+  - It is now shown the files in its own folder, the files directly under the product runners' roots, and the
+    code its text names or imports, held to 96,000 characters. A file beside the suite that doesn't fit is
+    named with its size and not shown.
+  - The 2.8 counted run's two `qa.test` prompts are shown exactly what they were shown then.
+  - A sample application's suite is scoped as before.
 - **A cancelled play names what it had run on** (#3236's MacBook half; SIP-0117 R5.34; the 2.9 plan's item 2). The
   worker answers a cancelled run, and a tool that raised, with an `interrupted` of its own, and that result carried
   an empty `ran_with`. So a play cancelled part way named no Studio, place or harness.

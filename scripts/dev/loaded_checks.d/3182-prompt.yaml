@@ -1,0 +1,11 @@
+checks:
+  - id: "3182-product-qa-prompt-bounded"
+    what: the qa agent shows a product's qa.test what is beside its suite and the runner's own files, never the tree, and a sample application's suite its package as before (SIP-0112 H.39)
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.qa_prompt_contents import PRODUCT_CONTENTS_MAX_CHARS, qa_test_prompt_contents
+      tree = {"README.md": "r", "checks/run.luau": "x", "checks/a/A.spec.luau": "a", "checks/b/B.spec.luau": "b", "src/m/M.luau": "m"}
+      task = {"subtask_focus": "s", "expected_artifacts": ["checks/c/C.spec.luau"], "artifact_contents": tree}
+      product = {**task, "source_repository": {"runners": [{"runner": "lune", "roots": ["checks"], "file_pattern": "*.spec.luau"}]}}
+      print(list(qa_test_prompt_contents(product)), len(qa_test_prompt_contents(task)), PRODUCT_CONTENTS_MAX_CHARS)
+    expect: "['checks/run.luau'] 3 96000"

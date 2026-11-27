@@ -49,7 +49,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from squadops.capabilities.handlers.source_repository import source_backed
-from squadops.capabilities.qa_prompt_contents import source_files
+from squadops.capabilities.qa_prompt_contents import product_runners, source_files
 from squadops.projects.derived_profile import runner_holds
 from squadops.stacks.development_profiles import (
     DEVELOPMENT_PROFILES,
@@ -82,17 +82,6 @@ def suite_run_tree(inputs: Mapping[str, Any]) -> dict[str, str]:
         **product_tree(inputs.get("artifact_contents") or {}, product_runners(inputs)),
         **scope_page_loader_files(inputs.get("increment_test_scope")),
     }
-
-
-def product_runners(inputs: Mapping[str, Any]) -> tuple[tuple[tuple[str, ...], str], ...]:
-    """Each of the product's own runners as ``(roots, file_pattern)``, from the task's
-    ``source_repository`` (``checkout.RunnerView``; contract 8 requires its roots)."""
-    runners = (inputs.get("source_repository") or {}).get("runners") or ()
-    return tuple(
-        (tuple(str(r) for r in runner.get("roots") or ()), str(runner["file_pattern"]))
-        for runner in runners
-        if isinstance(runner, Mapping) and runner.get("file_pattern")
-    )
 
 
 def product_tree[C: (str, bytes)](

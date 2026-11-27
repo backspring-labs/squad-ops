@@ -593,3 +593,154 @@ def test_a_package_named_by_its_folder_is_its_init_file():
     )
 
     assert list(found) == ["src/Shared/Util/init.luau"]
+
+
+# --- SIP-0112 H.39 (#3182): a product's qa.test prompt is bounded ---------------------------------
+
+#: A product whose tests live under ``checks/``, with one suite beside its source.
+_PRODUCT_TREE = {
+    "README.md": "# Tally\n",
+    "checks/run.luau": "-- the product's runner\n",
+    "checks/client/Shop.spec.luau": "-- the shop's spec\n",
+    "checks/client/Cart.spec.luau": "-- the cart's spec\n",
+    "checks/client/widgets/Deep.spec.luau": "-- a spec one folder down\n",
+    "checks/server/Ledger.spec.luau": "-- another folder's spec\n",
+    "src/shared/Pricing.luau": "return { total = function() end }\n",
+    "src/shared/Pricing.spec.luau": "-- a spec beside its source\n",
+    "src/shared/Tax.luau": "return {}\n",
+    "src/client/Shop.luau": "return {}\n",
+}
+
+
+def _product(expected: str, *, roots=("checks",), text: str = "", tree=None) -> dict:
+    return {
+        "prd": "",
+        "subtask_focus": "the suite",
+        "subtask_description": text,
+        "expected_artifacts": [expected],
+        "artifact_contents": tree if tree is not None else _PRODUCT_TREE,
+        "resolved_config": {"development_profile": "product_neutral"},
+        "source_repository": {
+            "commit": "c" * 40,
+            "map": "src/shared/Pricing.luau",
+            "runners": [{"runner": "lune", "roots": list(roots), "file_pattern": "*.spec.luau"}],
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("inputs", "shown"),
+    [
+        (
+            _product("checks/client/Shop.spec.luau"),
+            ["checks/run.luau", "checks/client/Shop.spec.luau", "checks/client/Cart.spec.luau"],
+        ),
+        # A runner rooted at the repository, with the suite beside its source: that folder, and
+        # nothing of the repository's top level.
+        (
+            _product("src/shared/Refund.spec.luau", roots=(".",)),
+            ["src/shared/Pricing.luau", "src/shared/Pricing.spec.luau", "src/shared/Tax.luau"],
+        ),
+        # A folder the product doesn't have yet: the test infrastructure, never the tree.
+        (_product("checks/billing/Invoice.spec.luau"), ["checks/run.luau"]),
+        # Nothing beside it, no runner on record, and the text names nothing: nothing is shown.
+        (_product("specs/New.spec.luau", roots=()), []),
+        # The code its text names is added, as on every path.
+        (
+            _product("checks/billing/Invoice.spec.luau", text="It requires shared.Pricing."),
+            ["checks/run.luau", "src/shared/Pricing.luau"],
+        ),
+    ],
+    ids=[
+        "beside its suite, with the runner's own files",
+        "a suite beside its source",
+        "a folder the product lacks",
+        "nothing to show",
+        "the code its text names",
+    ],
+)
+def test_a_products_suite_is_shown_what_is_beside_it_and_never_the_tree(inputs, shown):
+    """Bugs caught (#3182, measured on a product of 234 files): a suite under a source folder
+    shown the whole top-level directory, 137 files; and a suite whose folder matched nothing
+    shown the whole tree."""
+    assert list(qa_test_prompt_contents(inputs)) == shown
+
+
+def test_a_runner_rooted_at_a_dot_directory_is_matched_by_its_own_files():
+    """From the MacBook lane's review. Bug caught: every leading dot stripped from a path, so
+    ``.tools/run.luau`` read as in ``tools`` while the runner's root read ``.tools``, and the
+    runner's own script was never shown; the same idiom scoped a sample application's
+    dot-directory suite to nothing, and then to the whole tree."""
+    from squadops.capabilities.qa_prompt_contents import package_scoped
+
+    tree = {
+        ".tools/run.luau": "-- runner\n",
+        ".tools/specs/A.spec.luau": "-- a\n",
+        "src/M.luau": "m",
+    }
+
+    product = _product(".tools/new/B.spec.luau", roots=(".tools",), tree=tree)
+    assert list(qa_test_prompt_contents(product)) == [".tools/run.luau"]
+    assert list(package_scoped(tree, ["./.tools/specs/B.spec.luau"])) == [
+        ".tools/run.luau",
+        ".tools/specs/A.spec.luau",
+    ]
+
+
+def test_a_sample_applications_suite_is_scoped_as_it_always_was():
+    """The unchanged half: the same tree and task with no product repository. Bug caught: the
+    product's rule applied to a sample application, whose prompts must not move."""
+    sample = _product("checks/billing/Invoice.spec.luau")
+    del sample["source_repository"]
+
+    assert list(qa_test_prompt_contents(sample)) == [
+        name for name in _PRODUCT_TREE if name.startswith("checks/")
+    ]
+
+
+def test_past_the_cap_the_files_beside_the_suite_are_named_and_the_essential_ones_shown(
+    monkeypatch,
+):
+    """Bugs caught: a file left out with nothing said; the suite's own file or the code under
+    test dropped to make room; and the order of the prompt's files changed by the cap."""
+    from squadops.capabilities import qa_prompt_contents as module
+
+    tree = {
+        "checks/run.luau": "r" * 30,
+        "checks/client/Shop.spec.luau": "s" * 400,
+        "checks/client/Big.spec.luau": "b" * 300,
+        "checks/client/Small.spec.luau": "m" * 40,
+        "src/shared/Pricing.luau": "p" * 500,
+    }
+    monkeypatch.setattr(module, "PRODUCT_CONTENTS_MAX_CHARS", 1000)
+    inputs = _product("checks/client/Shop.spec.luau", text="It requires shared.Pricing.", tree=tree)
+
+    shown = qa_test_prompt_contents(inputs)
+
+    assert list(shown) == list(tree)
+    # 900 characters are the suite's own file and the code it names: always shown, over any cap.
+    assert shown["checks/client/Shop.spec.luau"] == "s" * 400
+    assert shown["src/shared/Pricing.luau"] == "p" * 500
+    # The 100 left go to the smallest files beside it first.
+    assert shown["checks/run.luau"] == "r" * 30
+    assert shown["checks/client/Small.spec.luau"] == "m" * 40
+    assert shown["checks/client/Big.spec.luau"] == (
+        "(not shown: 300 characters, past what this prompt shows of the product beside the suite)"
+    )
+
+
+async def test_the_handler_shows_a_products_bounded_files_and_the_composer_counts_them():
+    """Wiring, entered at the handler's step 1a and at the composer's count. Bug caught: the
+    rule built and never reached by the prompt, or the prompt bounded while the budget still
+    counts the tree, so lessons are refused room the prompt has."""
+    inputs = _product("checks/billing/Invoice.spec.luau", text="It requires shared.Pricing.")
+
+    prompt = (await _composed(inputs, "product_neutral")).user_prompt
+
+    assert _section_names(_shown_section(prompt)) == ["checks/run.luau", "src/shared/Pricing.luau"]
+    assert "the shop's spec" not in prompt and "# Tally" not in prompt
+    envelope = SimpleNamespace(task_type="qa.test", inputs=inputs)
+    shown = {name: _PRODUCT_TREE[name] for name in ("checks/run.luau", "src/shared/Pricing.luau")}
+    assert rendered_input_tokens(envelope) == _without_contents(envelope) + _tokens(
+        json.dumps(shown, sort_keys=True)
+    )
