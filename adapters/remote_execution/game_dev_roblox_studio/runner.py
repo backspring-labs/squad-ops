@@ -449,10 +449,11 @@ class RobloxStudioRunner(OperationRunnerPort):
                 with stages.stage("console_s"):
                     console_early = await place.console(session, sid)
                 with stages.stage("scenario_s"):
-                    records, log, stopped = await _scenario(
-                        session, sid, declaration, stages, guard
-                    )
-                if stopped is None:
+                    played = await _scenario(session, sid, declaration, stages, guard)
+                if isinstance(played, InputRefused):
+                    stopped = played
+                else:
+                    records, log = played
                     self._establish({"play_session": log.session_id})
                     with stages.stage("player_s"):
                         player = await play.observe(
@@ -1013,16 +1014,15 @@ async def _scenario(
     declaration: ScenarioDeclaration,
     stages: PlayStages,
     guard: InputGuard | None,
-) -> tuple[tuple[AssertionRecord, ...], play.PlayLog | None, InputRefused | None]:
-    """The scenario, or the R5.37 read that stopped it (point 6: nothing more is sent, and what
-    was read isn't evidence)."""
+) -> tuple[tuple[AssertionRecord, ...], play.PlayLog] | InputRefused:
+    """The scenario's records and log, or the R5.37 read that stopped it (point 6: nothing more
+    is sent, and what was read isn't evidence)."""
     try:
-        records, log = await play.run_scenario(
+        return await play.run_scenario(
             session, sid, declaration, timed=_waits_into(stages), **_guarded(guard)
         )
     except InputRefused as r:
-        return (), None, r
-    return records, log, None
+        return r
 
 
 def _guarded(guard: InputGuard | None) -> dict[str, Any]:
