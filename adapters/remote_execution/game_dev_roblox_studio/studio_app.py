@@ -7,8 +7,9 @@ The reset quits Studio, puts the baseline file in the place file's stead, and op
 no person involved. ``play_scenario`` asks one more thing: which app is in front, since Studio's
 input tools act only on a Studio in front (#3040, found live: a click with Terminal in front never
 answered). These are what the adapter asks of the Mac, behind :class:`StudioApp` so a test can
-stand in for them. :class:`MacStudioApp` is the real one: ``pgrep``, a signal, ``open -a``,
-``lsappinfo`` and ``lsof``.
+stand in for them. :class:`MacStudioApp` is the real one: ``pgrep``, a signal, ``open -a`` (to
+open the place), ``lsappinfo``, ``lsof``, and ``osascript`` to bring the running Studio forward by
+its process id.
 
 **Whether a person is at the Mac** (#3193) is read here too, for a dedicated worker that brings
 Studio to the front itself: how long since the last keyboard or mouse input, and whether the
@@ -43,9 +44,22 @@ _CHANNEL_LINE = re.compile(r"^[^\[]*\[FLog::ClientRunInfo\] The channel is (\S+)
 _IDLE_LINE = re.compile(r'"HIDIdleTime" = (\d+)')
 #: Whether the console session's screen is locked.
 _LOCKED_LINE = re.compile(r'"IOConsoleLocked" = (Yes|No)\b')
-#: The console session's own keys, inside ``IOConsoleUsers``.
-_ON_CONSOLE = re.compile(r'"kCGSSessionOnConsoleKey"=(Yes|No)')
-_LOGIN_DONE = re.compile(r'"kCGSessionLoginDoneKey"=(Yes|No)')
+#: Each console session's own keys, inside one entry of ``IOConsoleUsers``.
+_ON_CONSOLE = re.compile(r'"kCGSSessionOnConsoleKey"=(Yes|No)\b')
+_LOGIN_DONE = re.compile(r'"kCGSessionLoginDoneKey"=(Yes|No)\b')
+_CONSOLE_USERS = '"IOConsoleUsers" = ('
+#: Brings the process whose id is the one argument forward, and answers ``activated``,
+#: ``refused`` or ``gone``. ``NSRunningApplication`` names only a running process, so nothing is
+#: started. The options are ``NSApplicationActivateAllWindows`` and the (pre-14) ignoring of
+#: other apps.
+_ACTIVATE = """
+function run(argv) {
+  ObjC.import('AppKit');
+  const app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(parseInt(argv[0], 10));
+  if (app.isNil()) { return 'gone'; }
+  return app.activateWithOptions(3) ? 'activated' : 'refused';
+}
+"""
 
 
 @dataclass(frozen=True)
@@ -105,8 +119,10 @@ class StudioApp(Protocol):
         ``OSError`` when it can't be read."""
         ...
 
-    def activate(self) -> None:
-        """Bring the running Studio to the front (#3193), opening nothing."""
+    def activate(self, pid: int, timeout_s: float) -> None:
+        """Bring the running process ``pid`` to the front (#3193, R5.37), within ``timeout_s``.
+        Never starts a process: a ``pid`` that isn't running raises ``OSError``, as does an
+        activation the system refused or one that didn't answer in time."""
         ...
 
 
@@ -177,10 +193,23 @@ class MacStudioApp:
     def session_available(self) -> bool:
         return session_available_in(_ioreg("-n", "Root", "-d1"))
 
-    def activate(self) -> None:
-        # ``open -a`` brings a running app forward, and starts one that isn't running: the
-        # caller reads Studio's process immediately before (front.bring_studio_forward).
-        subprocess.run(["open", "-a", str(self._app)], check=True, timeout=30)
+    def activate(self, pid: int, timeout_s: float) -> None:
+        # R5.37: by the running process's id, through AppKit's NSRunningApplication, which
+        # answers nil for a process that isn't running and so can't start one (``open -a``
+        # did). JavaScript for Automation reaches AppKit with nothing installed.
+        try:
+            done = subprocess.run(
+                ["osascript", "-l", "JavaScript", "-e", _ACTIVATE, str(pid)],
+                capture_output=True, text=True, timeout=timeout_s, check=False,
+            )  # fmt: skip
+        except subprocess.TimeoutExpired as e:
+            raise OSError(f"the activation didn't answer within {timeout_s:.1f}s") from e
+        answer = done.stdout.strip()
+        if done.returncode != 0 or answer != "activated":
+            raise OSError(
+                f"the activation of process {pid} answered {answer or done.returncode!r}"
+                + (f": {done.stderr.strip()[:200]}" if done.stderr.strip() else "")
+            )
 
 
 def idle_seconds_in(ioreg: str) -> float:
@@ -197,13 +226,47 @@ def idle_seconds_in(ioreg: str) -> float:
 
 
 def session_available_in(ioreg: str) -> bool:
-    """Whether ``ioreg -n Root -d1``'s output reads a console session that is on the console and
-    has finished logging in. Raises ``OSError`` when it names no console session."""
-    on = _ON_CONSOLE.findall(ioreg)
-    done = _LOGIN_DONE.findall(ioreg)
-    if not on or not done:
-        raise OSError("ioreg -n Root names no console session, so its availability can't be read")
-    return "Yes" in on and "Yes" in done
+    """Whether ``ioreg -n Root -d1``'s output reads exactly one session on the console, and that
+    same session finished logging in (R5.37). Each entry of ``IOConsoleUsers`` is read on its own,
+    so one session's "on the console" is never paired with another's "logged in". Raises
+    ``OSError`` when there is no ``IOConsoleUsers`` to read. No entry, two on the console, or an
+    entry that doesn't say each once is unavailable."""
+    on_console = []
+    for entry in console_users_in(ioreg):
+        on, done = _ON_CONSOLE.findall(entry), _LOGIN_DONE.findall(entry)
+        if len(on) != 1 or len(done) != 1:
+            return False  # a contradiction within one entry
+        if on[0] == "Yes":
+            on_console.append(done[0] == "Yes")
+    return on_console == [True]
+
+
+def console_users_in(ioreg: str) -> list[str]:
+    """Each entry of ``IOConsoleUsers`` (``({...},{...})``), as its own text. Raises ``OSError``
+    when the key is absent or its list doesn't close. Quoted text is skipped, so a brace in a
+    value never splits an entry."""
+    start = ioreg.find(_CONSOLE_USERS)
+    if start < 0:
+        raise OSError("ioreg -n Root names no IOConsoleUsers, so no session can be read")
+    entries: list[str] = []
+    depth, quoted, began = 0, False, -1
+    for i in range(start + len(_CONSOLE_USERS), len(ioreg)):
+        ch = ioreg[i]
+        if quoted:
+            quoted = ch != '"'
+        elif ch == '"':
+            quoted = True
+        elif ch == "{":
+            depth += 1
+            if depth == 1:
+                began = i
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                entries.append(ioreg[began : i + 1])
+        elif ch == ")" and depth == 0:
+            return entries
+    raise OSError("ioreg -n Root's IOConsoleUsers list doesn't close, so it can't be read")
 
 
 def locked_in(ioreg: str) -> bool:

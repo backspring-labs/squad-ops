@@ -21,7 +21,9 @@ Whether it starts at login is yours to keep or change.
 
 A scenario that clicks, types or moves acts through Studio's input, which acts only on a Studio in front
 (R5.18). A worker that finds another app in front refuses such a play, and the Campaign retries it (R5.28).
-That is still what happens unless you declare a dedicated window.
+That is still what happens unless you declare a dedicated window. Whether dedicated or not, the worker reads the
+lock and the console session before every such play, and the lock again before each input action: a locked screen
+is never played on (R5.37).
 
 ## A dedicated window (R5.33)
 
@@ -42,23 +44,35 @@ SQUADOPS__WORKER__ROBLOX_STUDIO_IDLE_THRESHOLD_S=300
 - **The threshold is at least 60 seconds.** It is how long the Mac must have had no keyboard, mouse or trackpad
   input. A lower value is refused as a setting.
 - **The window is one span, not a daily schedule.** Write a new one for each period you give the Mac over.
+- **A value the worker can't read stops every play that clicks, types or moves,** not only the bringing forward:
+  a start or end without an offset or that doesn't parse, an end before its start, or a threshold under 60 or
+  not a whole number. Each such play is refused as the Mac's, with Studio in front or not, until the line is fixed
+  and the worker restarted. Leaving a line out instead makes the worker not dedicated, and it plays as before.
 - **Restart the worker after changing them** (the two `launchctl` lines above).
 
-What the worker reads, all of it, each time, before it brings Studio forward:
+What the worker reads before every play that clicks, types or moves, whether or not Studio is already in front
+(R5.37):
 1. the window, against the Mac's clock;
 2. that it still holds the operation's lease;
 3. the idle counter, at or over the threshold;
-4. the screen unlocked and the console session available;
-5. the idle counter again, and the clock again, immediately before;
-6. that a proved Studio is running.
+4. the screen unlocked, and exactly one console session on the console and logged in;
+5. the idle counter again;
+6. that a proved Studio is running, and, if it is behind, the clock again before it brings that Studio forward
+   by its process id.
 
-If any of them doesn't hold, or can't be read, it doesn't bring Studio forward, and the play is refused as
-before. It never starts Studio, never unlocks the screen, answers no dialog and sends no input of its own. If
-you touch the Mac during the activation, nothing is played and the front isn't moved again.
+Then, immediately before the first input action, the lease, the window and the idle counter again; and before
+each input action after it, and as soon as a held key ends, the lock and the idle counter.
 
-Each result records what happened, in `ran_with`: `front.activated`, `front.was` (`studio`, `other`, `none` or
-`unread`), `front.idle_s`, and `front.refused` with one of the rule's reasons. It never records which app was in
-front or what you were doing.
+If any of them doesn't hold, or can't be read, nothing more is sent, and the play is refused as the Mac's, never
+as the work's. It never starts Studio (it brings forward only the running process the proof read), never
+unlocks the screen, answers no dialog and sends no input of its own. If you touch the Mac during the activation
+or during the play, nothing more is played, and the front isn't moved again. Your keyboard and mouse are what
+the idle counter reads: measured on this Mac, a scenario's own clicks and held keys don't move it.
+
+Each play that clicks, types or moves records what happened, in `ran_with`: `front.input` (`permitted` or
+`refused`), `front.activated` (`false` when Studio was already in front), `front.was` (`studio`, `other`,
+`none` or `unread`), `front.idle_s`, and `front.refused` with one of the rule's reasons. It never records which
+app was in front or what you were doing.
 
 ## Before you give the Mac over
 

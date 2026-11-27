@@ -157,6 +157,13 @@ class _Mac:
             raise self.front
         return self.front
 
+    def locked(self) -> bool:
+        """R5.37: read on every input play. An unlocked Mac, unless a test says otherwise."""
+        return False
+
+    def session_available(self) -> bool:
+        return True
+
     def pids(self) -> list[int]:
         return [self.pid] if self.pid else []
 
@@ -305,9 +312,9 @@ async def test_with_no_name_to_redact_nothing_is_returned(tmp_path, monkeypatch,
 @pytest.mark.parametrize(
     ("front", "says"),
     [
-        (31620, "process 31620 is in front, and Studio's are [4242]"),
+        (31620, "another app is in front"),
         (None, "no app is in front"),
-        (OSError("lsappinfo front failed: no session"), "couldn't be read: lsappinfo front failed"),
+        (OSError("lsappinfo front failed: no session"), "which app is in front couldn't be read"),
     ],
     ids=["another-app-in-front", "nothing-in-front", "front-unreadable"],
 )

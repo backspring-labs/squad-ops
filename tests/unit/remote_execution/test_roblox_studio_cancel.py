@@ -178,6 +178,10 @@ class _Deploy:
             return (await tx.operation(operation_id)).result
 
 
+#: R5.37 point 7: an input play with Studio already in front, on a worker that isn't dedicated.
+FRONT = {"front.input", "front.activated", "front.was"}
+
+
 def _named(result) -> set[str]:
     """What the run named of itself: every key but the harness digests and the registry's own
     word on who served the result, which it adds at acceptance (R5.32)."""
@@ -191,11 +195,12 @@ def _named(result) -> set[str]:
         # Before the session opened: the run's own facts and its harness, and no Studio.
         ("open", RUN),
         # After the proof, before the place was found: the Studio, and no place.
-        ("list_roblox_studios", RUN | PROOF),
+        # R5.37: the scenario has input, so how its input was allowed is named once read.
+        ("list_roblox_studios", RUN | PROOF | FRONT),
         # During the sync (R5.36): the pin check's own reading is the place's baseline already.
-        ("program:sync", RUN | PROOF | {"place_baseline"}),
+        ("program:sync", RUN | PROOF | FRONT | {"place_baseline"}),
         # Mid-scenario, at the setup's click: the place's baseline too, and no play session.
-        ("user_mouse_input", RUN | PROOF | {"place_baseline"}),
+        ("user_mouse_input", RUN | PROOF | FRONT | {"place_baseline"}),
     ],
     ids=["before-the-proof", "after-the-proof", "during-the-sync", "mid-scenario"],
 )
