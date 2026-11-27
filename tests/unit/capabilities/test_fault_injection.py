@@ -1970,10 +1970,77 @@ def test_the_client_stops_profile_is_the_source_increment_with_the_fault_and_no_
     assert faulted == plain
 
 
+_CLIENT_STALLS = "luau_client_stalls_at_start"
+
+
+class TestTheClientThatNeverFinishesStarting:
+    """#3284, the 2.9 certification window's case 10: a setup failure SIP-0117 R5.32 must not
+    attribute, because the candidate raises nothing for its provider to name."""
+
+    def test_the_first_client_script_waits_where_the_throw_would_be_and_raises_nothing(self):
+        """Bugs caught: a stall that raises (a script error is named, the failure is attributed
+        and case 10 reads as case 9); one the headless loader meets, so the product's specs hang;
+        or one with no marker, which a diff reads as the squad's own line."""
+        from squadops.capabilities.handlers.fault_injection import LUAU_CLIENT_STALL
+
+        emission = _LUAU_EMISSION.replace(
+            "```luau:src/Client/UI/HUD.local.luau\n",
+            "```luau:src/Client/UI/HUD.local.luau\n--!strict\n",
+        )
+        faulted = FAULTS[_CLIENT_STALLS].transform(emission)
+
+        client = faulted.split("```luau:src/Client/UI/HUD.local.luau\n")[1].split("```")[0]
+        assert client.split("\n")[:3] == [
+            "--!strict",
+            '-- shows "5 lives left" for a player with five lives',
+            LUAU_CLIENT_STALL,
+        ]
+        assert faulted.replace(LUAU_CLIENT_STALL + "\n", "", 1) == emission
+        assert LUAU_CLIENT_STALL.startswith('if typeof(game) == "Instance" then while true do ')
+        assert "error(" not in LUAU_CLIENT_STALL and "assert(" not in LUAU_CLIENT_STALL
+        code, _, comment = LUAU_CLIENT_STALL.partition(" -- ")
+        assert "__squadops_injected_fault__" in comment and "__squadops" not in code
+
+    def test_a_change_with_no_client_script_is_unchanged(self):
+        server_only = _LUAU_EMISSION.split("```luau:src/Client")[0]
+
+        assert FAULTS[_CLIENT_STALLS].transform(server_only) == server_only
+
+    def test_a_campaigns_repair_cycle_is_built_without_it(self):
+        """Bug caught: the stall carried into the repair cycle row 8 launches, so the Campaign's
+        repair can never be read."""
+        assert bound_cycle_faults([_CLIENT_STALLS]) == []
+
+
+@pytest.mark.parametrize(
+    ("profile", "fault"),
+    [
+        ("campaign-increment-source-client-stops-corrected", _CLIENT_STOPS),
+        ("campaign-increment-source-client-stalls", _CLIENT_STALLS),
+    ],
+)
+def test_each_certification_diagnostic_is_the_source_increment_with_its_fault_and_nothing_else(
+    profile, fault
+):
+    """#3284. Bug caught: a diagnostic profile that differs from a real increment in more than
+    its fault, in-run correction above all: with correction off, case 9 would read as the row-8
+    diagnostic and case 10 would show nothing about a correction not being spent."""
+    from squadops.contracts.cycle_request_profiles import load_profile
+
+    plain = dict(load_profile("campaign-increment-source").defaults)
+    faulted = dict(load_profile(profile).defaults)
+
+    assert faulted.pop(DECLARATION_KEY) == [fault]
+    assert faulted["max_correction_attempts"] == plain["max_correction_attempts"] == 3
+    assert faulted == plain
+
+
 @pytest.mark.parametrize(
     ("profile", "carried"),
     [
         ("campaign-increment-source-client-stops", []),
+        ("campaign-increment-source-client-stops-corrected", []),
+        ("campaign-increment-source-client-stalls", []),
         ("campaign-increment-source-wrong-text", [_WRONG_TEXT]),
     ],
 )

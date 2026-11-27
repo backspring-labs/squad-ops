@@ -7807,3 +7807,26 @@ def test_the_client_stops_readout_is_row_8s_input_and_nothing_else(driver, rec, 
     _, _, read = driver.SEAM_READOUTS["luau_client_throws_at_start"]
 
     assert read(rec)[0] is reached
+
+
+@pytest.mark.parametrize(
+    ("rec", "reached"),
+    [
+        ({"verdict": "blocked_unverified", "correction_rounds": 0}, True),
+        ({"verdict": "blocked_unverified", "correction_rounds": 1}, False),
+        ({"verdict": "accepted", "correction_rounds": 1}, False),
+        ({}, None),
+    ],
+    ids=[
+        "unread, nothing spent",
+        "a correction was spent on it",
+        "repaired and accepted",
+        "no verdict",
+    ],
+)
+def test_the_client_stalls_readout_is_an_unread_candidate_with_no_correction(driver, rec, reached):
+    """#3284. Bug caught: a stalled candidate the run repaired anyway (a correction spent on a
+    failure nothing attributed) reading as case 10's seam reached."""
+    _, _, read = driver.SEAM_READOUTS["luau_client_stalls_at_start"]
+
+    assert read(rec)[0] is reached

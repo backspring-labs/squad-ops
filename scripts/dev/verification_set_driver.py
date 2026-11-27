@@ -3830,6 +3830,15 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
         ("verdict", "correction_rounds", "loop_texture.faults_applied"),
         lambda rec: _client_stops_reading(rec),
     ),
+    # #3284, the 2.9 certification window's case 10. The faulted increment's own cycle shows the
+    # same shape as the throw's with correction off: the candidate unread, and no correction.
+    # Here it is unread with correction ON, which is the reading: nothing was attributed.
+    "luau_client_stalls_at_start": (
+        "R5.32's negative: the faulted increment's candidate read blocked_unverified (its plays "
+        "setup_failed, no script error named) and no correction round was spent on it",
+        ("verdict", "correction_rounds", "loop_texture.faults_applied"),
+        lambda rec: _client_stops_reading(rec),
+    ),
     "analyzer_false_source_claim": (
         "A1: the framework refuted the claim against the workspace, a decision was reached, "
         "and none of them inherited it — quoting a refuted path to reject it is not "

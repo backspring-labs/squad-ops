@@ -550,6 +550,34 @@ def _luau_client_throws_at_start(content: str) -> str:
 
     The line goes after the file's leading comments and directives (``--!strict`` stays first),
     so it runs when the script loads."""
+    return _first_client_script_opens_with(content, LUAU_CLIENT_THROW)
+
+
+#: #3284 (the 2.9 certification window's case 10): the line a client script gets, which never
+#: finishes where the engine loads the script, and raises nothing. Guarded as the throw is, so
+#: the headless loader runs past it. The marker is in a comment: a stalled script writes no
+#: console line, and a diff must still read as injected.
+LUAU_CLIENT_STALL = (
+    'if typeof(game) == "Instance" then while true do task.wait(1) end end '
+    f"-- {INJECTED_CLAIM_MARKER} (#3284): the client never finishes starting"
+)
+
+
+def _luau_client_stalls_at_start(content: str) -> str:
+    """The emission with its first client script made to wait forever where the engine loads it,
+    or unchanged when the change touches no client script.
+
+    The setup failure SIP-0117 R5.32 must *not* attribute: the candidate's plays read
+    ``setup_failed`` as the throw's do, and its console names no script error, since nothing
+    raised. So the attribution's third condition fails, the run spends no correction, and the
+    cycle reads ``blocked_unverified``. Placed as the throw is."""
+    return _first_client_script_opens_with(content, LUAU_CLIENT_STALL)
+
+
+def _first_client_script_opens_with(content: str, line: str) -> str:
+    """``content`` with ``line`` put into its first client script, after the file's leading
+    comments and directives, so it runs when the script loads. Unchanged when the emission
+    holds no client script: a suite's file and a shared module are passed over."""
     for block in _ADDRESSED_BLOCK.finditer(content):
         path = block.group("info").partition(":")[2]
         if not (_LUAU_SOURCE.search(path) and _LUAU_CLIENT.search(path)) or _is_suite_path(path):
@@ -558,12 +586,12 @@ def _luau_client_throws_at_start(content: str) -> str:
         at = next(
             (
                 i
-                for i, line in enumerate(lines)
-                if line.strip() and not line.lstrip().startswith("--")
+                for i, text in enumerate(lines)
+                if text.strip() and not text.lstrip().startswith("--")
             ),
             len(lines),
         )
-        lines.insert(at, LUAU_CLIENT_THROW)
+        lines.insert(at, line)
         return content[: block.start("body")] + "\n".join(lines) + content[block.end("body") :]
     return content
 
@@ -841,6 +869,19 @@ FAULTS: dict[str, Fault] = {
         exercises="#3222: the increment's plays read not executed where the baseline's setup was "
         "met, the cycle ends blocked_unverified, the Campaign routes §10 row 8, and its repair "
         "cycle, built without the fault, passes the same frozen scenarios",
+        stacks=PLAYED_PROFILES,
+        bound_cycles=False,
+    ),
+    # #3284, the 2.9 certification window's case 10: a setup failure nothing attributes.
+    # A campaign's increments declare it through `campaign-increment-source-client-stalls`.
+    "luau_client_stalls_at_start": Fault(
+        task=TaskType.DEVELOPMENT_DEVELOP,
+        transform=_luau_client_stalls_at_start,
+        found_in="#3284 — no roll produced it: modelled on #3200's rehearsal 3, with the "
+        "client waiting forever where that one threw, so its console names no script error",
+        exercises="SIP-0117 R5.32's negative: the candidate's plays read setup_failed, the "
+        "attribution is kept and reads no script error named, no in-run correction is "
+        "dispatched, and the cycle ends blocked_unverified",
         stacks=PLAYED_PROFILES,
         bound_cycles=False,
     ),
