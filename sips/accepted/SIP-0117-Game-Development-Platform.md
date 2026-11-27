@@ -2175,6 +2175,12 @@ with the owner's go-ahead in the MacBook session:
 - **A worker that isn't dedicated reads only the lock during the play,** as well as the lock and the session before
   it. It holds no idle threshold (point 1), so its counter isn't read at all.
 - **The lock is read before the first input action too,** not only before each one after it.
+- **A declaration that is present but can't be read refuses every input play,** with Studio in front too: a window
+  start or end with no UTC offset, or one that doesn't parse, or an end at or before its start
+  (`window_unreadable`), and a threshold under 60 s or not a whole number (`threshold_too_low`). Before, it
+  mattered only when Studio was behind. A declaration with the flag missing, or the flag set and a start, end or
+  threshold missing, is not dedicated, as R5.33 says, and plays as any worker that isn't dedicated: R5.18's front,
+  with the lock and the session read.
 - **Point 4's read is one read,** immediately before the first input action, after the activation or the in-front
   check: the lease, the window and the idle counter. A counter lower there than the check's last reading is
   `input_before_activation` (test 4).

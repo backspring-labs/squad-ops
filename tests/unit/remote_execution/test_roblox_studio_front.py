@@ -447,6 +447,29 @@ async def test_7_a_worker_that_isnt_dedicated_reads_the_lock_on_every_input_play
     assert _tools(tmp_path / "unlocked") == INPUTS
 
 
+@pytest.mark.parametrize(
+    "policy",
+    [FrontPolicy(None, START, END, "120"), FrontPolicy("true", None, END, "120"),
+     FrontPolicy("true", START, None, "120"), FrontPolicy("true", START, END, None)],
+    ids=["no-dedicated-flag", "no-start", "no-end", "no-threshold"],
+)  # fmt: skip
+async def test_a_declaration_with_a_line_left_out_is_not_dedicated(tmp_path, policy):
+    """Nothing is defaulted, and nothing is refused for it either: it plays as a worker that
+    isn't dedicated. Bug caught: a missing line read as a broken one, refusing every input play;
+    or read as dedicated, taking the front."""
+    in_front = _played(_sub(tmp_path, "in-front"))
+    mac = _FrontMac(in_front, front=STUDIO)
+    result = await _run(in_front, mac, policy=policy)
+    assert result.status is OperationStatus.COMPLETED, result.reason
+    assert (_front(result)["front.input"], mac.idle_reads) == ("permitted", 0)
+
+    behind = _played(_sub(tmp_path, "behind"))
+    mac = _FrontMac(behind)
+    result = await _run(behind, mac, policy=policy)
+    _refused(result, "not_dedicated")
+    assert mac.activations == []
+
+
 async def test_a_worker_that_isnt_dedicated_refuses_studio_behind_as_before(tmp_path):
     world = _played(tmp_path)
     mac = _FrontMac(world)

@@ -44,6 +44,10 @@ SQUADOPS__WORKER__ROBLOX_STUDIO_IDLE_THRESHOLD_S=300
 - **The threshold is at least 60 seconds.** It is how long the Mac must have had no keyboard, mouse or trackpad
   input. A lower value is refused as a setting.
 - **The window is one span, not a daily schedule.** Write a new one for each period you give the Mac over.
+- **A value the worker can't read stops every play that clicks, types or moves,** not only the bringing forward:
+  a start or end without an offset or that doesn't parse, an end before its start, or a threshold under 60 or
+  not a whole number. Each such play is refused as the Mac's, with Studio in front or not, until the line is fixed
+  and the worker restarted. Leaving a line out instead makes the worker not dedicated, and it plays as before.
 - **Restart the worker after changing them** (the two `launchctl` lines above).
 
 What the worker reads before every play that clicks, types or moves, whether or not Studio is already in front
