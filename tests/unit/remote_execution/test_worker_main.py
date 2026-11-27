@@ -10,7 +10,7 @@ import typing
 import pytest
 from pydantic import ValidationError
 
-from squadops.config.schema import PROVIDER_SETTINGS, WorkerConfig
+from squadops.config.schema import PROVIDER_OPTIONAL_SETTINGS, PROVIDER_SETTINGS, WorkerConfig
 from squadops.remote_execution.worker_main import (
     build_worker,
     client_secret,
@@ -59,7 +59,13 @@ def test_the_section_is_read_from_its_variables(env):
         "client_secret": "a-literal-secret",
         "status_file": os.environ["SQUADOPS__WORKER__STATUS_FILE"],
         "provider": "fixture",
-    } | {name: None for name in PROVIDER_SETTINGS["roblox-studio"]}
+    } | {
+        name: None
+        for name in (
+            *PROVIDER_SETTINGS["roblox-studio"],
+            *PROVIDER_OPTIONAL_SETTINGS["roblox-studio"],
+        )
+    }
 
 
 @pytest.mark.parametrize("key", sorted(SECTION))

@@ -439,6 +439,27 @@ class WorkerConfig(BaseModel):
         ),
     )
 
+    # R5.33 (#3193): a dedicated worker's declaration, written by the person who owns the Mac.
+    # Each is optional: none written is a worker that isn't dedicated, and nothing is defaulted.
+    # They are read as written and checked at each activation, so a value that can't be read
+    # refuses that activation by name and never stops the worker from serving.
+    roblox_studio_dedicated: str | None = Field(
+        default=None,
+        description="'true' declares this worker dedicated: its runner may bring Studio to the "
+        "front inside the window below (SIP-0117 R5.33)",
+    )
+    roblox_studio_window_start: str | None = Field(
+        default=None, description="The dedicated window's start, ISO 8601 with a UTC offset"
+    )
+    roblox_studio_window_end: str | None = Field(
+        default=None, description="The dedicated window's end, ISO 8601 with a UTC offset"
+    )
+    roblox_studio_idle_threshold_s: str | None = Field(
+        default=None,
+        description="Seconds without keyboard or mouse input before Studio may be brought to "
+        "the front; at least 60",
+    )
+
     @model_validator(mode="after")
     def _the_providers_settings_and_no_others(self) -> "WorkerConfig":
         own = PROVIDER_SETTINGS[self.provider]
@@ -450,9 +471,9 @@ class WorkerConfig(BaseModel):
             )
         foreign = [
             name
-            for provider, names in PROVIDER_SETTINGS.items()
+            for provider in PROVIDER_SETTINGS
             if provider != self.provider
-            for name in names
+            for name in (*PROVIDER_SETTINGS[provider], *PROVIDER_OPTIONAL_SETTINGS[provider])
             if getattr(self, name) is not None
         ]
         if foreign:
@@ -463,8 +484,13 @@ class WorkerConfig(BaseModel):
         return self
 
     def provider_settings(self) -> dict[str, str]:
-        """The provider's own settings, by field name, as its runner is created with them."""
-        return {name: getattr(self, name) for name in PROVIDER_SETTINGS[self.provider]}
+        """The provider's own settings, by field name, as its runner is created with them: every
+        required one, and each optional one that is written."""
+        own = {name: getattr(self, name) for name in PROVIDER_SETTINGS[self.provider]}
+        for name in PROVIDER_OPTIONAL_SETTINGS[self.provider]:
+            if getattr(self, name) is not None:
+                own[name] = getattr(self, name)
+        return own
 
 
 #: Each provider's own settings in :class:`WorkerConfig`.
@@ -477,6 +503,16 @@ PROVIDER_SETTINGS: dict[str, tuple[str, ...]] = {
         "roblox_studio_baseline_sha256",
         "roblox_studio_baseline_digest",
         "roblox_studio_qualifications",
+    ),
+}
+#: Each provider's optional settings in :class:`WorkerConfig`, refused for any other provider.
+PROVIDER_OPTIONAL_SETTINGS: dict[str, tuple[str, ...]] = {
+    "fixture": (),
+    "roblox-studio": (
+        "roblox_studio_dedicated",
+        "roblox_studio_window_start",
+        "roblox_studio_window_end",
+        "roblox_studio_idle_threshold_s",
     ),
 }
 
