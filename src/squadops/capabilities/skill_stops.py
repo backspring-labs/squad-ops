@@ -12,13 +12,17 @@ Core holds no skill's words: it reads what the task's handed skills declare.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.skillsets import SKILL_FILE, skill_stops
 from squadops.llm.exceptions import LLMError
+
+logger = logging.getLogger(__name__)
 
 #: What a model puts around a line it was shown in inline code or a list: stripped from both
 #: ends before the line is compared, and never from inside it.
@@ -104,6 +108,16 @@ def read_stop(handed: Sequence[Mapping[str, Any]] | None, response: str | None) 
     the template's placeholders are no reason. An answer whose only such line is the quote
     holds no stop.
 
+    Two more readings are no stop (#3240, §17aa), each because a stop is the model's whole
+    answer:
+
+    - **a line that names the opening and doesn't use it.** The opening alone in an inline-code
+      span, with words outside it, is the opening mentioned: "`no scenario:` doesn't apply
+      here". A stop the model writes in inline code carries its reason inside the span;
+    - **an answer that also emits a file.** A reply that writes the task's artifact hasn't
+      stopped, whatever line it holds. The artifact is read as any other, and the line passed
+      over is logged, so a task that did its work is never read as one that refused it.
+
     Raises:
         FrontmatterError: A handed skill's ``SKILL.md`` has no readable front matter. The
             skillset's load refused that, so a kept copy holding one was changed afterwards.
@@ -121,10 +135,22 @@ def read_stop(handed: Sequence[Mapping[str, Any]] | None, response: str | None) 
     for raw in response.splitlines():
         line = _bare(raw)
         folded = line.casefold()
+        mentioned = {span.strip().casefold() for span in _INLINE_CODE.findall(raw)}
         for skillset, skill, opening, shown in declared:
             if not folded.startswith(opening.casefold()) or not line[len(opening) :].strip():
                 continue
             if any(quoted.startswith(folded) for quoted in shown):
                 continue
+            if opening.casefold() in mentioned:
+                continue
+            if extract_fenced_files(response):
+                logger.warning(
+                    "skill_stop_passed_over: the answer holds a line that opens a stop of "
+                    "%s/%s and also emits a file, so it is read as the file's: %s",
+                    skillset,
+                    skill,
+                    line,
+                )
+                return None
             return SkillStop(skillset, skill, opening, line)
     return None

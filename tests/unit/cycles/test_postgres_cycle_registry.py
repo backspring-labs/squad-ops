@@ -710,12 +710,14 @@ class TestPostgresCycleRegistry:
             await registry.record_gate_decision("run_001", decision)
 
     # ------------------------------------------------------------------
-    # 17. list_cycles — status derived from each batch's latest runs, read together
+    # 17. list_cycles — each batch's runs and endings read together, then the cycle's reading
     # ------------------------------------------------------------------
 
     async def test_list_cycles_with_status_filter(self, registry, conn):
-        """#1976. Bug caught: the latest run read one cycle at a time (N+1), so a status filter
-        over a project of 694 cycles made 694 more queries."""
+        """#1976. Bug caught: a cycle's runs read one cycle at a time (N+1), so a status filter
+        over a project of 694 cycles made 694 more queries. A batch costs five reads whatever
+        its size: its runs, their gate decisions, holds and halts, and its recorded endings
+        (#3224)."""
         row_active = _cycle_row(cycle_id="cyc_001", cancelled=False)
         row_created = _cycle_row(cycle_id="cyc_002", cancelled=False)
         gate = {
@@ -729,8 +731,11 @@ class TestPostgresCycleRegistry:
         # cyc_001 has a queued run (ACTIVE); cyc_002 has none (CREATED)
         conn.fetch.side_effect = [
             [row_active, row_created],  # the batch of cycle rows
-            [_run_row(run_id="run_001", cycle_id="cyc_001", status="queued")],  # latest runs
+            [_run_row(run_id="run_001", cycle_id="cyc_001", status="queued")],  # its runs
             [gate],  # their gate decisions
+            [],  # their binding holds
+            [],  # their halts
+            [],  # its recorded endings: none
         ]
 
         result = await registry.list_cycles("proj_1", status=CycleStatus.ACTIVE)
@@ -740,11 +745,51 @@ class TestPostgresCycleRegistry:
         assert "ORDER BY created_at DESC" in main_fetch_sql
         assert "LIMIT" in main_fetch_sql
         assert "OFFSET" in main_fetch_sql
-        latest_sql, latest_ids = conn.fetch.call_args_list[1][0]
-        assert "DISTINCT ON (cycle_id)" in latest_sql
-        assert latest_ids == ["cyc_001", "cyc_002"]
-        assert conn.fetch.call_count == 3
+        runs_sql, run_ids = conn.fetch.call_args_list[1][0][:2]
+        assert "PARTITION BY cycle_id" in runs_sql
+        assert run_ids == ["cyc_001", "cyc_002"]
+        ends_sql, end_ids = conn.fetch.call_args_list[5][0]
+        assert "FROM cycle_ends" in ends_sql
+        assert end_ids == ["cyc_001", "cyc_002"]
+        assert conn.fetch.call_count == 6
         conn.fetchrow.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("asked", "listed"),
+        [(CycleStatus.FAILED, ["cyc_gate"]), (CycleStatus.COMPLETED, ["cyc_done"])],
+    )
+    async def test_the_status_filter_reads_a_cycles_recorded_ending(
+        self, registry, conn, asked, listed
+    ):
+        """#3224. Two cycles whose latest run completed: one went on to finish, and the other's
+        plan was rejected at its gate, which its ``cycle_ends`` row records. Bug caught: the
+        filter reading the latest run alone, so ``--status completed`` returned the rejected
+        cycle, whose own row reads ``failed``, and ``--status failed`` left it out."""
+        conn.fetch.side_effect = [
+            [
+                _cycle_row(cycle_id="cyc_gate", cancelled=False),
+                _cycle_row(cycle_id="cyc_done", cancelled=False),
+            ],
+            [
+                _run_row(run_id="run_g", cycle_id="cyc_gate", status="completed"),
+                _run_row(run_id="run_d", cycle_id="cyc_done", status="completed"),
+            ],
+            [],  # no gate decisions
+            [],  # no binding holds
+            [],  # no halts
+            [
+                {
+                    "cycle_id": "cyc_gate",
+                    "last_run_id": "run_g",
+                    "stopped_because": "plan_rejected",
+                    "detail": None,
+                }
+            ],
+        ]
+
+        result = await registry.list_cycles("proj_1", status=asked)
+
+        assert [c.cycle_id for c in result] == listed
 
     async def test_list_runs_for_cycles_groups_each_cycles_runs_and_keys_every_cycle(
         self, registry, conn

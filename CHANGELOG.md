@@ -27,6 +27,22 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   files is refused, and a test refuses a row appended to the old file.
 
 ### Fixed
+- **A stop a skill declares outranks the task's own requirements** (#3240; SIP-0116 §17aa; the 2.9 plan's
+  item 9): the skills section ranked every part of a skill below the task's requirements, so a task asked for
+  exactly one file could settle a skill's stop against itself and write the artifact the stop exists to
+  prevent. One replay generation in three did, and cited that sentence.
+  - The section now names a declared stop as the exception, beside the ordering and again where it ends, with
+    the stops the task's skills declare listed by their opening lines.
+  - A task whose skills declare none, and every task with no skills, renders the prompt it rendered before.
+  - Still to come under #3240: the replay that shows the model stops.
+- **On a product, a plan's `qa.test` names a file one of its runners collects** (#3182, the plan-gate half;
+  SIP-0112 H.38; the 2.9 plan's item 8): a `qa.test` naming a source file or a note passed every plan gate,
+  and its task was then shown most or all of the product to write a suite nothing runs.
+  - `validate_qa_suite_collected` reads each `qa.test` file against the product runners' roots and file-name
+    patterns, never its extension, at the framing's gate, the in-run gate and an operator's plan at create.
+  - The plan's authors are shown what each runner collects first (`request.plan_test_runners_appendix`).
+  - Replayed over 128 stored plans of four products, it refuses none.
+  - Still to come under #3182: the cap on what a `qa.test` is shown, with its replay.
 - **On a product, a `qa.test` is shown what is beside its suite, and never the tree** (#3182, the prompt half;
   SIP-0112 H.39; the 2.9 plan's item 8): a suite whose file sat in a source folder was shown that whole
   top-level directory, and one whose folder matched nothing was shown the whole tree: 141 files and 201 files
@@ -36,14 +52,6 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     named with its size and not shown.
   - The 2.8 counted run's two `qa.test` prompts are shown exactly what they were shown then.
   - A sample application's suite is scoped as before.
-- **On a product, a plan's `qa.test` names a file one of its runners collects** (#3182, the plan-gate half;
-  SIP-0112 H.38; the 2.9 plan's item 8): a `qa.test` naming a source file or a note passed every plan gate,
-  and its task was then shown most or all of the product to write a suite nothing runs.
-  - `validate_qa_suite_collected` reads each `qa.test` file against the product runners' roots and file-name
-    patterns, never its extension, at the framing's gate, the in-run gate and an operator's plan at create.
-  - The plan's authors are shown what each runner collects first (`request.plan_test_runners_appendix`).
-  - Replayed over 128 stored plans of four products, it refuses none.
-  - Still to come under #3182: the cap on what a `qa.test` is shown, with its replay.
 - **A cancelled play names what it had run on** (#3236's MacBook half; SIP-0117 R5.34; the 2.9 plan's item 2). The
   worker answers a cancelled run, and a tool that raised, with an `interrupted` of its own, and that result carried
   an empty `ran_with`. So a play cancelled part way named no Studio, place or harness.
@@ -73,6 +81,19 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   - The worker's refusal names the tools that differ: `(changed script_read)`, with added and removed beside it.
   - A pin written under `/2` still pins. Against it the comparison reads unavailable, and the record that
     replaces it holds `tools_changed: null`, never an empty list.
+- **Every view of a cycle reads the same status and names the same ending** (#3224, #3244; the 2.9 plan's
+  item 3):
+  - **The list's status filter reads what the cycle's own row reads** (#3224). It read the latest run alone,
+    so `squadops cycles list --status completed` returned a cycle whose gate had rejected its plan and whose
+    row read `failed`, and left out of `--status active` a cycle waiting between workloads. Both registries
+    now filter by the one reading, `lifecycle.cycle_reading`: the recorded ending first, then the runs and the
+    workload progress. A batch still costs a fixed number of reads.
+  - **A one-workload cycle names its ending** (#3244). A Campaign's repair or retry cycle ends
+    `single_workload_ended`, and its row read `recorded_ending: null`, so an ended repair cycle couldn't be told
+    from one never ended. The row now names it, with the status of the run it names. A run cancelled on a cycle
+    not itself marked cancelled read `created`; it reads `cancelled`.
+  - The workload-progress alignment and the reading moved from the API's mapping into `cycles/lifecycle.py`,
+    so the route, the list and the registries share one definition.
 - **A recorded artifact the vault can't return ends the run by name** (#3128, the 2.9 plan's item 4): the
   executor's reads inside a run caught a failed retrieval, logged it and went on. The run then continued without
   its plan, its skeleton, a checkpoint's file or a seed, and a PRD that couldn't be read was handed to every
