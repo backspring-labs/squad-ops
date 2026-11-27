@@ -350,6 +350,7 @@ class RemotePathContract:
         a requester that reads ``interrupted`` and asks for its next one."""
         asked = path.ask()
         playing = path.hanging()
+        playing.establishes = {"scripted-editor": "7.2", "place": "p-1"}
         async with path.serving(path.worker(playing)):
             waiting = asyncio.ensure_future(path.requester().run_operation(asked, OWNER))
             await _until(_running, playing)
@@ -365,6 +366,11 @@ class RemotePathContract:
         assert [c.effect for c in reached] == [CancelEffect.STOP_REQUESTED]
         assert (result.status, result.reason) == (OperationStatus.INTERRUPTED, REASON_CANCELLED)
         assert (stored.state, stored.late_result) == (OperationState.SETTLED, None)
+        # #3236: what the play had established reaches the requester over the wire.
+        assert {k: result.ran_with.get(k) for k in ("scripted-editor", "place")} == {
+            "scripted-editor": "7.2",
+            "place": "p-1",
+        }
         # The worker stopped its tool and reset it, with nobody there, and ran nothing else.
         assert (len(playing.stopped_at), playing.resets - resets_before) == (1, 1)
         assert (after.status, len(playing.runs)) == (OperationStatus.NOT_EXECUTED, 1)
