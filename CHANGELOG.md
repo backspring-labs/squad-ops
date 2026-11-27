@@ -5,15 +5,6 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
-### Added
-- **Two diagnostics for the 2.9 certification window** (#3284; the pre-registration's cases 9 and 10). Neither is a
-  capability: a cycle that declares a fault is never counted.
-  - `campaign-increment-source-client-stops-corrected`: #3222's client-stops fault with in-run correction on, for
-    the setup failure SIP-0117 R5.32 attributes and repairs in the run.
-  - `luau_client_stalls_at_start`, declared by `campaign-increment-source-client-stalls`: the candidate's first
-    client script never finishes where the engine loads it and raises nothing, for the setup failure R5.32 must not
-    attribute. A Campaign's repair cycle is built without it.
-
 ### Changed
 - **The three dependency moves capped on 2026-11-15 are taken** (#3101, the 2.9 plan's item 14): FastAPI 0.135 to
   0.165 with Starlette 1.6 to 1.10, aio-pika 10.0 to 10.2 with aiormq 7.0 to 7.2, and ruff 0.16.6 to 0.17.5.
@@ -60,6 +51,22 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   - The runbook is `docs/ops/STUDIO_WORKER_RUNBOOK.md`.
   - `scripts/dev/studio_worker_proof.py` passes the four settings, and names an owner for each round, which the
     registry has required since R5.30 (#3282): on main the proof raised before its first round.
+- **Two diagnostics for the 2.9 certification window** (#3284; the pre-registration's cases 9 and 10). Neither is a
+  capability: a cycle that declares a fault is never counted.
+  - `campaign-increment-source-client-stops-corrected`: #3222's client-stops fault with in-run correction on, for
+    the setup failure SIP-0117 R5.32 attributes and repairs in the run.
+  - `luau_client_stalls_at_start`, declared by `campaign-increment-source-client-stalls`: the candidate's first
+    client script never finishes where the engine loads it and raises nothing, for the setup failure R5.32 must not
+    attribute. A Campaign's repair cycle is built without it.
+- **A measured set of Studio plays is played and read by one tool** (#3250, the Spark lane's half of the 2.9
+  plan's item 13; the certification pre-registration's amendment 13a). `scripts/dev/measured_play_set.py`:
+  - `play` queues one frozen scenario on the pinned baseline through the runtime's own worker registry, one play
+    at a time, and writes the set's record: each play's claim-to-completion time from the runtime's record of
+    the operation, each stage from the worker's `stages.json`, and the median, the p95 and plays per hour;
+  - `compare` reads a before set and an after set, says whether they are a matched pair and why not, names each
+    play whose outcomes differ, and reads the median's cut against the 20% target;
+  - `host-bar` reads a `host_quiet_reading.py` document against the bar a set's start and end must meet. An
+    unread reading misses it.
 
 ### Fixed
 - **A stop a skill declares outranks the task's own requirements** (#3240; SIP-0116 §17aa; the 2.9 plan's
