@@ -205,6 +205,7 @@ phases are in its own ledger.
 | The checks that guard a person hold for every input play: R5.33's conditions read whether or not Studio is in front, the lock and session on any worker, the front read once, the activation by the proved process's id, the lease and window read again before the first input, the lock and counter during the play, the session entry by entry, `front.input` on every input play (R5.37) | **shipped** | 2.9 (PR #3302, closing #3300) |
 | A candidate's own setup failure, the core: a play's result names the script errors its provider read, the registry writes who served it, and six conditions read from the cycle's records attribute a setup failure to the candidate, which then gets one correction in the run; the reading is kept either way, and anything else keeps its routing, not executed (R5.32) | **shipped** | 2.9 (PR #3275) |
 | A candidate's own setup failure, on Studio: the provider reads its console for script errors and names its environment (the MacBook lane; R5.32's Studio half) | **shipped** | 2.9 (PR #3288) |
+| A candidate's own setup failure, on Studio: a staged script that doesn't compile is named from its stackless line (R5.32, amended 2026-11-27) | **shipped** | 2.9 (PR #3306, closing #3304) |
 | A candidate's own setup failure, played: the diagnostic goes from baseline to attributed failure to repair to the same frozen scenarios passing (R5.32; the certification window's case 9) | **placed** (the 2.9 plan, adopted 2026-11-26) | 2.9, #3200 |
 | A dedicated worker brings Studio to the front: inside its declared window, after the idle threshold and a fresh read of human input, each activation and refusal recorded in `ran_with`, and anything uncertain a refusal (R5.33; the Spark lane wrote the rule and the MacBook lane built it) | **shipped** | 2.9 (PR #3269, closing #3193) |
 | G-1: Godot integration works | **unplaced**, deliberately | — |
@@ -1840,6 +1841,33 @@ over the stand-in `StudioMCP`, which now models a console that play's start clea
 
 Five mutations each fail a test: the errors left off the result, the message unredacted, Studio's path kept, the
 edit-mode log read as the play's, and the environment named without a window.
+
+**Amended 2026-11-27: a staged script that doesn't compile is named** (#3304; the MacBook lane's build, found by the
+Spark lane in the certification's rehearsal 2). The rows "What is skipped" and "What is reported" above now read
+with one change: **a stackless line `<script>:<line>: <message>` whose script, read as the place holds it, is a staged
+file is reported**, as that file, line and line of text, redacted. It is read in console order with the stacked
+blocks, so the first error still wins.
+- **The evidence.** Case 1's second increment in rehearsal 2 (`cmp_76f9ecb61c0e`, 2026-11-27): the candidate's client
+  module didn't parse. Studio wrote one stackless line naming the module and its line, then a follow-on block for
+  each requirer. The reader skipped the line as stackless and the follow-ons as follow-ons, so every candidate play
+  read `setup_failed` with no script error named, condition 3 failed, and the run's correction wasn't dispatched;
+  the cycle went to the Campaign's repair. Nothing was credited wrongly.
+- **Why the old rule didn't reach it.** The stackless skip rested on the place's engine and network errors, which
+  name no staged script, and the consoles read for the shapes held only runtime throws. A compile error is the one
+  stackless line that names a staged script and its line in its own text.
+- **What stands.** The follow-ons are still skipped: they name the requirers, not the faulty module, and their
+  stacks are never borrowed. An engine line, or a compile error in a script the request didn't stage or in Studio's
+  own code, is still not reported. A line with the same prefix followed by `Stack Begin` is a stacked block's
+  message, read from its frame as before. No harness program changed, so no `harness.*` digest moved, and
+  `environment` doesn't change; it doesn't name the console reader, so a comparison across worker checkouts names
+  the commit.
+- **Its tests,** in the same file: the rehearsal's shape (redacted) names the module and line; an unstaged compile
+  error, Studio's own, and a follow-on carrying a script prefix aren't named; console order decides across the two
+  kinds; and, entered at `RobloxStudioRunner.run` through `_script_errors`, a staged script that doesn't compile is
+  named as its staged file. Four mutations each fail a test: compile errors not read, a stacked block's message read
+  as one, an unstaged one named, and a follow-on with a prefix named.
+- **Who ruled.** The Spark lane read it as a seam finding by §6 of the certification's registration; whether it
+  resets rehearsal 2's exit rule is the owner's, and the worker's checkout moves to it only on that ruling.
 
 **Not in this amendment.**
 - **The played diagnostic** of the plan's item 7 (baseline, attributed failure, repair, the same frozen

@@ -14,7 +14,10 @@ block of bare lines (read on 2026-11-26 from six stored consoles; none carries a
 
 The first frame is the one that raised. What is reported (R5.32's "What a provider reports"):
 
-- **only an error with a stack.** An engine or network error has none, and isn't reported;
+- **an error with a stack,** and **one stackless kind: a staged script that fails to compile**
+  (#3304). Studio writes a script that doesn't parse as one line in its own text,
+  ``<script>:<line>: <message>``, with no stack, before the follow-ons below. An engine or network
+  error has no stack either, but names no staged script, and isn't reported;
 - **only one whose raising frame is a script of the staged tree.** One raised in Studio's own
   code, or in the command the provider's probe ran (``AssistantCommand``), isn't;
 - **never a warning,** which the console writes as bare as an error. The one that carries a stack
@@ -46,6 +49,9 @@ PROBE_SCRIPT = "AssistantCommand"
 #: an error raised, so it is never reported (ruled with the Spark lane, 2026-11-26).
 INFINITE_YIELD = "Infinite yield possible on"
 _FRAME = re.compile(r"^Script '(?P<script>[^']+)', Line (?P<line>\d+)(?: - .*)?$")
+#: A script's own error line, ``<script>:<line>: <message>``: alone it is a compile error (#3304);
+#: followed by ``Stack Begin`` it is a stacked block's message, read from its frame.
+_SCRIPT_LINE = re.compile(r"^(?P<script>[^\s:]+):(?P<line>\d+): (?P<message>\S.*)$")
 _PLAYER_SCRIPTS = re.compile(r"^Players\.[^.]+\.PlayerScripts\.")
 _STARTER_PLAYER_SCRIPTS = "StarterPlayer.StarterPlayerScripts."
 
@@ -71,6 +77,9 @@ def first_script_error(console: str, staged: Mapping[str, str]) -> ConsoleError 
     script is never reported."""
     lines = console.splitlines()
     for index, line in enumerate(lines):
+        compiled = _compile_error(lines, index, staged)
+        if compiled is not None:
+            return compiled
         if line.strip() != STACK_BEGIN or index == 0:
             continue
         message = lines[index - 1].strip()
@@ -85,6 +94,23 @@ def first_script_error(console: str, staged: Mapping[str, str]) -> ConsoleError 
         if place_path(script) in staged:
             return ConsoleError(place_path(script), at, message)
     return None
+
+
+def _compile_error(lines: list[str], index: int, staged: Mapping[str, str]) -> ConsoleError | None:
+    """The line at ``index`` as a staged script's compile error: its own ``<script>:<line>:
+    <message>`` with no stack after it, naming a staged script. ``None`` for anything else: a
+    stacked block's message line (read from its frame), an engine line, or another script's."""
+    text = lines[index].strip()
+    matched = _SCRIPT_LINE.match(text)
+    if matched is None or MODULE_LOAD_FOLLOW_ON in text:
+        return None
+    following = next((line.strip() for line in lines[index + 1 :] if line.strip()), "")
+    if following == STACK_BEGIN:
+        return None
+    script = place_path(matched["script"])
+    if script not in staged:
+        return None
+    return ConsoleError(script, int(matched["line"]), text)
 
 
 def _first_frame(lines: list[str], start: int) -> tuple[str, int] | None:
