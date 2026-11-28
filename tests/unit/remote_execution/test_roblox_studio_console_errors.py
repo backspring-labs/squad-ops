@@ -70,15 +70,32 @@ Script '{PLAYER}.Main', Line 34
 Stack End
 """
 
+#: #3304's shape (certification rehearsal 2, 2026-11-27): a module that doesn't compile writes its
+#: own line with no stack, then the follow-ons with theirs. The compiler's text is a stand-in.
+PARSE = f"""\
+The server is starting
+{PLAYER}.UI.Screens.HUD:26: Expected identifier when parsing expression, got '::'
+Requested module experienced an error while loading
+Stack Begin
+Script '{PLAYER}.Controllers.UIController', Line 31
+Stack End
+Requested module experienced an error while loading
+Stack Begin
+Script '{PLAYER}.Main', Line 34
+Stack End
+"""
+
 
 @pytest.mark.parametrize(
     ("console", "reported"),
     [
+        (PARSE, ConsoleError(
+            HUD, 26, f"{PLAYER}.UI.Screens.HUD:26: Expected identifier when parsing expression, got '::'")),
         (REHEARSAL_3, ConsoleError(HUD, 311, 'Visible is not a valid member of ScreenGui "TA_HUD"')),
         (MODULE_LOAD, ConsoleError(
             HUD, 6, f"{PLAYER}.UI.Screens.HUD:6: __squadops_injected_fault__ the screen failed")),
     ],
-    ids=["rehearsal-3", "a-module-that-failed-to-load"],
+    ids=["a-module-that-doesnt-compile", "rehearsal-3", "a-module-that-failed-to-load"],
 )  # fmt: skip
 def test_the_first_block_raised_in_a_staged_script_is_reported(console, reported):
     assert first_script_error(console, STAGED) == reported
@@ -103,6 +120,11 @@ def test_the_first_block_raised_in_a_staged_script_is_reported(console, reported
         f"Script '{PLAYER}.Main', Line 7\nStack End\n",
         # A stack whose frame is a script the request didn't stage.
         f"boom\nStack Begin\nScript '{PLAYER}.Vendor.Lib', Line 9\nStack End\n",
+        # A compile error in a script the request didn't stage, and one in Studio's own code.
+        f"{PLAYER}.Vendor.Lib:3: Expected 'end', got <eof>\n",
+        "CoreGui.RobloxGui.Modules.X:12: Expected identifier\n",
+        # A follow-on is never a compile error, whatever it names.
+        f"{PLAYER}.UI.Screens.HUD:1: Requested module experienced an error while loading\n",
         "",
     ],
     ids=[
@@ -112,11 +134,28 @@ def test_the_first_block_raised_in_a_staged_script_is_reported(console, reported
         "no-frame",
         "an-infinite-yield",
         "unstaged",
+        "an-unstaged-compile-error",
+        "studios-own-compile-error",
+        "a-follow-on-with-a-script-prefix",
         "empty",
     ],
 )
 def test_what_isnt_a_staged_scripts_own_error_is_never_reported(console):
     assert first_script_error(console, STAGED) is None
+
+
+def test_the_first_error_wins_whether_stacked_or_a_compile_error():
+    """Console order decides, across both kinds: a stacked block before a compile error is the
+    error, and a compile error before a block is. A stacked block's message line, which carries
+    the same ``<script>:<line>:`` prefix, is read from its frame, never as a compile error."""
+    unrelated_parse = f"{PLAYER}.Main:2: Expected identifier\n"
+
+    assert first_script_error(MODULE_LOAD + unrelated_parse, STAGED) == ConsoleError(
+        HUD, 6, f"{PLAYER}.UI.Screens.HUD:6: __squadops_injected_fault__ the screen failed"
+    )
+    assert first_script_error(unrelated_parse + REHEARSAL_3, STAGED) == ConsoleError(
+        MAIN, 2, f"{PLAYER}.Main:2: Expected identifier"
+    )
 
 
 def test_a_later_staged_block_is_reported_when_an_earlier_one_isnt_a_staged_scripts():
@@ -227,6 +266,31 @@ async def test_a_play_whose_console_names_a_staged_scripts_error_reports_it_as_t
     )  # fmt: skip
     assert result.ran_with["console_window"] == "cleared"
     assert len(result.ran_with[RAN_WITH_ENVIRONMENT]) == 16
+    assert result_defects(asked, result) == []
+
+
+async def test_a_play_whose_staged_script_doesnt_compile_names_it_as_the_file(tmp_path):
+    """#3304, entered at the runner a worker calls, through ``_script_errors``: a staged server
+    script that doesn't parse is named as its staged file, its line and Studio's line, redacted.
+    Bug caught: a candidate's own syntax error read as no error, so R5.32's condition 3 never
+    holds and its correction is never dispatched."""
+    world = _played(
+        tmp_path,
+        console_edit="the edit-mode log\n",  # Studio clears it as play starts
+        console="PlayerOne joined the game\n"
+        f"{SERVER_MAIN}:7: Expected 'end' (to close 'function' at line 3), got <eof> for PlayerOne\n"
+        "Requested module experienced an error while loading\nStack Begin\n"
+        f"Script '{SERVER_MAIN}', Line 1\nStack End\n",
+    )
+    asked = _request()
+
+    result = await _runner(world).run(asked)
+
+    assert result.status is OperationStatus.COMPLETED, result.reason
+    assert result.script_errors == (
+        ScriptError(STAGED_MAIN, 7, f"{SERVER_MAIN}:7: Expected 'end' (to close 'function' at "
+                    "line 3), got <eof> for @player"),
+    )  # fmt: skip
     assert result_defects(asked, result) == []
 
 

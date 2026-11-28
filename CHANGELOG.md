@@ -112,6 +112,11 @@ All notable changes to SquadOps are recorded here. Format loosely follows
     the stops the task's skills declare listed by their opening lines.
   - A task whose skills declare none, and every task with no skills, renders the prompt it rendered before.
   - Still to come under #3240: the replay that shows the model stops.
+- **A candidate's script that doesn't compile is named by the Studio console reader** (#3304; SIP-0117 R5.32,
+  amended): Studio writes a parse error as one stackless line naming the script and line, and the reader skipped
+  every stackless line, so a candidate's own syntax error read as no error and its in-run correction was never
+  dispatched (found in the certification's rehearsal 2). The line is now named when its script is a staged one;
+  the follow-ons stay skipped.
 - **The worker's checks guard every play that acts through Studio's input, not only an activation** (#3300;
   SIP-0117 R5.37, the outside review's findings): with Studio already in front, the worker read no lock, idle
   counter, console session or lease, and played; after its start-up reset that was the usual path.
