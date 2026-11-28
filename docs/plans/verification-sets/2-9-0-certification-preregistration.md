@@ -919,3 +919,103 @@ it before it was registered. Where the Spark lane departed from the review, it s
 - limited to the registered scenario.
 
 It lists every departure from this registration with who ruled it. No claim is shown in a class it wasn't shown in.
+
+### 13g. Rehearsal 2's reading, a parse error the provider didn't name, and a third rehearsal (2026-11-27)
+
+**What changed.** Rehearsal 2 didn't pass whole: case 1 failed, on a seam finding in a 2.9 item. The fix merged,
+the worker's checkout moved to it, and the owner allowed a third rehearsal. No case's pass or fail condition
+changes, and nothing counted has run.
+
+**Who ruled.**
+- **The third rehearsal: the owner** (D16). To the MacBook lane in its own session, at about 21:54 ET: "Yes, run
+  rehearsal 3 (Recommended)", in answer to a question naming rehearsal 3's eight cases, the counted window after
+  it with the owner at the Mac for cases 3, 3b, 4 and 4b, and the release PR's merge and the tag staying the
+  owner's. And to the Spark lane at 21:52 ET: "Do everything you can to cut 2.9 tonight."
+- **The finding and its fix: the Spark lane** read the finding by §6. The MacBook lane read it the same way,
+  built the fix (#3306, closing #3304) and the Spark lane reviewed it.
+
+**Rehearsal 2, uncounted,** on the final deploy `dep_d5820ce5efc8` (main at `41de5f25`), 2026-11-27, with the
+owner's four dedicated values written and the Mac's own stack stopped. The worker ran from main at `41de5f25`.
+
+| Step | Case | Campaign | From, to (ET) | What it read |
+|---|---|---|---|---|
+| A | 2 | `cmp_0081a91970b5` | 18:49, 19:01 | Finder in front; the play claimed with it there; `front.was` `other`, `front.activated` `true`, `front.idle_s` 1647; the play ran, every assertion executed |
+| A | 5 | the same | 19:02, 19:03 | the worker stopped with nothing claimed and started; the new session's tool list the pin's |
+| A | 6 | the same | 19:08, 19:10 | the worker stopped 10 s into a claim; attempt 1 `expired` at the re-registration, attempt 2 accepted; one accepted result, no late result |
+| A | 8 | the same | 19:10, 19:13 | the abort 48 s into a claim cancelled one operation; the worker answered `interrupted`; nothing queued after; the next play read the pin's place baseline |
+| B | 1 | `cmp_76f9ecb61c0e` | 19:13, 20:41 | B-1 accepted. **B-2 not accepted**: its candidate's client module didn't parse, every candidate play read `setup_failed`, the provider named no error, no correction was dispatched, and the repair cycle repeated the fault. The Campaign escalated (§10 row 9). **Case 1 fails** |
+| C | 9 | `cmp_4efa26ceb3b1` | 20:43, 21:07 | `setup_failed`, attributed (the injected throw named, file and line), one correction dispatched and spent, the same scenario digests before and after, the increment accepted |
+| D | 10 | `cmp_3805f605374d` | 21:08, 21:46 | `setup_failed`, not attributed, no correction dispatched; then the Campaign's own row 8 and an accepted repair cycle |
+| E | 11 | `cmp_bd47b518c87d` | 21:46, 22:19 | the injected error attributed on every candidate play, no correction left to dispatch; rows 5, 8 and 3, the repair cycle accepted |
+
+- **Rulings at the increment gate:** six proposals and nine rulings. Three were approved as first proposed (cases
+  9, 10 and 11), and three were returned first, each `criteria_not_checkable` by §5's bar, then approved on
+  revision: step A's B-1, step B's B-1 and step B's B-2. The MacBook lane read every proposal before its ruling. Two
+  of the returns rest on a defect the Spark lane's first read missed:
+  - step A's B-1 read only an added element's text, so a hidden element passed, and its `prd_delta` was empty.
+    The Spark lane's first read approved it, and the MacBook lane found both;
+  - step B's B-1's headless criterion keyed its rule on values of a type the product never passes it. The Spark
+    lane raised the keys as a question, and the MacBook lane traced the type.
+
+  The cut record reports these beside the window's rulings, as misses of the ruler's first read.
+- **Interventions:** none outside the cases themselves. Case 1's escalation was left as it stood for the owner.
+
+**The seam finding: a staged script that doesn't parse was never named** (#3304). R5.32's Studio half (#3288)
+reported only an error block with its own stack, and skipped the follow-on "Requested module experienced an
+error while loading". Studio writes a parse error as one stackless line naming the script and its line, and the
+only stacks after it are the follow-ons'. So the candidate's `script_errors` read `[]` while its console named a
+file the candidate changed. R5.32's condition 3 failed, no correction was dispatched, and the repair cycle was
+built without the error. It is a reading that couldn't see its own miss (§6). Case 1's failure is its
+consequence and not a second finding: with the error named, the run's one correction would have had the line.
+Nothing was credited wrongly.
+
+**The fix and what it supersedes.** #3306 (main at `4972be1b`) names a stackless `<script>:<line>: <message>` line
+whose script is staged, in console order with the stacked blocks. It changes the worker's provider only:
+- the runtime never loads the module, so the deploy `dep_d5820ce5efc8` is not superseded, and case 14's pair
+  stands (13e point 6);
+- no `harness.*` digest moves, and `environment` doesn't either. It doesn't name the console reader, so the record
+  names the worker's commit for every play (13f point 2), and §11 says so;
+- the worker's checkout moves to `4972be1b`, after case 11 ends with nothing claimed. The MacBook lane plays a
+  client module that doesn't parse by hand on it first, and the record gives what the result names.
+
+**Rehearsal 3** runs all eight cases on that checkout and the same deploy, with the opening checks 3 and 4 read
+again for the new session: case 1 first, since it is the case that failed; then cases 2, 5, 6 and 8 on a second
+Campaign of case 1's definition (13e point 2); then cases 9, 10 and 11. Its exit rule and pass conditions are §6's
+and §7's. A new seam finding in it ends the window's attempt for this cut. A fourth rehearsal is the owner's (D16).
+
+**The counted window after it, and the owner-present cases run without the owner.** The owner, to the MacBook lane
+in its own session at about 22:00 ET, asked "Can you do it without me?", and answered "Yes" to the MacBook lane's
+plan below. It changes cases 3, 3b, 4 and 4b, so it is registered here before any of them runs. Each case's record
+names its stand-in, and none is reported as a person's.
+
+- **The order.** Cases 1, 2 and 5 to 14 unattended, then 3, then 3b, then 4b last, since nothing can play after it.
+  The window's end is the owner's to move (D12).
+- **Cases 3 and 3b: a declared user activity stands in for a person's input.** The MacBook lane declares it with
+  `caffeinate -u -t 1`, which needs no permission or setting changed.
+  - **Its condition, read before either case runs:** with the worker stopped, the idle counter the worker reads
+    (`HIDIdleTime`) is read before and after one declaration. If the declaration doesn't reset it, cases 3 and 3b
+    are not run without the owner, and the record says so.
+  - **Case 3:** one play of the qualification scenario on the baseline is queued straight after a declaration,
+    with another app in front. It passes by §7's condition, read as `idle_below_threshold`.
+  - **Case 3b:** one play of the frozen hold scenario (`sha256:80403cee…14f5ae`), with the declaration made during
+    its 10 s hold. It passes by 13f point 3's condition, read as `input_during_play`.
+  - **What they show:** the worker refuses on an idle counter that a declared activity reset. They don't show that a
+    person's own typing or pointer resets that counter. That is §11's, beside the R5.37 measurement of the counter
+    on the play's own input.
+- **Case 4b: the display put to sleep stands in for the owner's lock.** With Studio in front, the MacBook lane runs
+  `pmset displaysleepnow`, after which the Mac locks at once. It reads the screen locked and the idle counter past
+  the threshold, and only then does the Spark lane queue the one play. It passes by 13f point 3's condition, read
+  as `locked`. "The screen is still locked when the owner returns" is read by the MacBook lane, which never
+  unlocks: the lock state is read again after the result, and the Mac stays locked until the owner returns.
+- **Case 4 is not run, and is reported as shown by tests only.** One lock can't serve both 4 and 4b faithfully, and
+  4b is the path the review found unguarded. A lock with another app in front is held by R5.37's tests and by
+  R5.33's condition tests with Studio behind, named in the record. §11 says it wasn't played.
+- **What stays the owner's:** the release PR's merge and the tag.
+
+**Added to §11:**
+- cases 3, 3b and 4b ran with stand-ins (a declared user activity; the display put to sleep), not with a person;
+  case 4 wasn't played;
+- `environment` doesn't name the worker's console reader. Two checkouts with different readers name one
+  `environment`, so a reading compared across checkouts names the commit;
+- a headless criterion loads only the module it tests, so nothing headless parsed the candidate's client module. A
+  build check that compiles every changed `.luau` file in the footprint is a follow-on for 2.10 (#3304).
