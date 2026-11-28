@@ -1019,3 +1019,69 @@ names its stand-in, and none is reported as a person's.
   `environment`, so a reading compared across checkouts names the commit;
 - a headless criterion loads only the module it tests, so nothing headless parsed the candidate's client module. A
   build check that compiles every changed `.luau` file in the footprint is a follow-on for 2.10 (#3304).
+
+### 13h. Rehearsal 3's reading, the owner's rulings for the window, and a band-margin rule (2026-11-28)
+
+**What changed.** Rehearsal 3 passed whole, with no new seam finding, so the counted window may open (§6). Four rulings of the owner's, given on 2026-11-28, change how the window and the cut run, and one ruling bar is added, before anything counted runs. No case's pass or fail condition changes.
+
+**Who ruled.**
+- **The owner, to the Spark lane in its own session:**
+  - at 07:59 ET: "I need you guys to run autonomously!";
+  - at about 09:23 ET, on cases 3 and 3b: "If I am not available to do that I am totally ok with not running those tests and still cut the release. Give me like 5 minutes to respond to a ping; if I don't respond, then proceed with the cut";
+  - at about 09:31 ET: "Yes give me the same 5 minutes timer on the release PR and tag".
+- **The owner, to the MacBook lane in its own session,** at 08:01 ET: "I told you I needed you to run autonomously". Under that word, the MacBook lane wrote a new window's dedicated settings.
+- **The band-margin rule:** the two lanes, under those words. The MacBook lane proposed it from case 1's reading; the Spark lane registered it.
+
+**Why a new window.** Rehearsal 3 didn't run in the window that 13g's rehearsal 2 opened (2026-11-27 18:45 to 2026-11-28 07:00 ET). From about 22:10 ET until about 07:57 ET, the MacBook session was held on a question to the owner, so the window closed unused after rehearsal 2. By the MacBook lane's own account, that was its error: a blocking question on a step that didn't depend on its answer. The new window opened at 08:05 ET on 2026-11-28 and ends 12 hours later. Its values are not recorded (§3).
+
+**Before the window, outside it** (the MacBook lane's readings):
+- **#3304's last done-when is met.** A hand play through `studio_play_scenario.py`, not the worker, ran a scratch tree with a staged client module that doesn't compile, on main at `de2009d8`. Both assertions read `setup_failed`, and `script_errors` named the module's file and line, with the compiler's message.
+- **13g's stand-in for cases 3 and 3b doesn't hold.** `caffeinate -u -t 1` doesn't reset the idle counter: 48,320.55 s before, 48,321.66 s just after, and 48,324.72 s three seconds later. By 13g, cases 3 and 3b wait for a person's real input.
+
+**Rehearsal 3 passed whole, uncounted,** on the final deploy `dep_d5820ce5efc8`, with the worker on main at `de2009d8` (#3306), 2026-11-28.
+
+| Step | Case | Campaign | From, to (ET) | What it read |
+|---|---|---|---|---|
+| A | 1 | `cmp_18f4abc1da69` | 08:05, 09:44 | B-1 accepted. B-2's candidate threw at load in a changed client script, a squad error and not an injected one. Every candidate play named it at its file and line, the attribution held on all six conditions, and the run's correction was dispatched. The correction emitted nothing: the dev's repair was `cap_exhausted` twice, every completion token was reasoning, and the retests replayed an identical tree (#3309). The Campaign's row 8 then ran a repair cycle. It was accepted: B-2's scenarios passed, and B-1's were replayed and passed. **Case 1 passes** |
+| B | 2 | `cmp_958963ad86bc` | 09:45, 10:04 | Finder in front from 09:51:05; the first play claimed with it there; `front.was` `other`, `front.activated` `true`, `front.idle_s` 55795; it completed, and every assertion executed |
+| B | 5 | the same | 10:04, 10:06 | the worker stopped with nothing claimed (SIGTERM, exited in 1 s) and started; the new session's `tool_versions` equal the previous session's whole |
+| B | 6 | the same | 10:07, 10:10 | the worker stopped 10 s into the candidate's S1; attempt 1 `expired` at the re-registration, and attempt 2 was claimed on the new session and completed |
+| B | 8 | the same | 10:10, 10:13 | the abort 48 s into the candidate's S2: the play settled `interrupted`, nothing was queued after, and the post-abort play completed in 75.1 s |
+| C | 9 | `cmp_1f0a180f4f1b` | 10:13, 10:37 | `setup_failed`, with the injected throw named (file, line, `__squadops_injected_fault__`), attributed on all six conditions, and one correction dispatched and spent. The retest passed, the same scenario digests held before and after, and the increment was accepted |
+| D | 10 | `cmp_5755ea9cadbb` | 10:38, 11:12 | `setup_failed` with `script_errors` `[]` on every candidate play. With #3306 that means no staged script raised or failed to compile: the stall. Not attributed, no correction dispatched; then the Campaign's own row 8 and an accepted repair cycle |
+| E | 11 | `cmp_e5f6b7b571b9` | 11:12, 11:51 | the injected error attributed on every candidate play, with no correction left to dispatch; rows 5, 8 and 3, and the repair cycle accepted |
+
+- **Rulings at the increment gate:** six proposals and nine rulings, as in rehearsal 2. Three were approved as first proposed (cases 9, 10 and 11). Three were returned first, each `criteria_not_checkable` by §5's bar, then approved on revision: case 1's B-1 and B-2, and step B's B-1.
+  - **Every first proposal for a goal set revision 1 increment was returned** (case 1's B-1 and B-2, step B's B-1). The causes were an empty `prd_delta` (all three), a headless rule keyed on values of a type the product never passes it (case 1's B-1), and a timed reading that didn't depend on its wait (case 1's B-2). Each was the same defect rehearsal 2 had.
+  - **The MacBook lane** read every proposal before its ruling and agreed with each one. This time, the Spark lane's first read missed nothing that the MacBook lane found.
+- **Interventions:** none, outside the cases themselves.
+
+**Case 1's live proof, stated plainly.** A real squad error, not an injected one, was named at its file and line, and the run's correction was dispatched on it. That is R5.32 with #3306, on the live path, which rehearsal 2 couldn't show. What then failed was older than 2.9:
+- **No change made:** the development repair spent its one correction emitting nothing. Its handler and cap are 2.8.1's, since `git log v2.8.1..` on them is empty.
+- **The retests:** they replayed the unchanged tree (#3309).
+- **#3272:** the row-8 repair cycle's prompt doesn't carry the script error.
+
+The repair cycle got B-2 accepted anyway. #3309 and #3272 together are why a named, attributed error can still end unrepaired. Both are after the tag.
+
+**The band-margin rule, added to §5's bar for the counted window.**
+- **Why:** case 1's B-2 scenario held a key for a fixed time and accepted a ten-second band. A correct clock read **the band's last value**, with 1 s of margin. On this setup, about 3 to 4 s pass from the clock's zero to the read: the 2.8 counted run's equivalent scenario read 3 s past its hold. So a correct clock was about a second from failing on the band alone.
+- **The rule:** a time-banded reading whose margin to either edge, taken on that measured overhead, is under 2 s is returned as `criteria_not_checkable`. A scenario a correct candidate passes only about half the time is not checkable.
+- **What the return names:** the shape (the hold and the band must leave room for the measured overhead), never the seconds.
+- **When it applies:** from the counted window. No ruling already made changes.
+
+**Cases 3 and 3b: a five-minute ping, then not run.**
+- **The ping:** when the window reaches them, the Spark lane pings the owner and waits five minutes, read from the clock.
+- **If the owner answers,** the MacBook lane runs the sitting with them as §7 and 13f point 3 describe.
+- **If not,** both are recorded as not run, by the owner's ruling, and the window goes on to case 4b and the cut.
+
+13g's stand-in is withdrawn because its own condition failed: the measured readings above show that a declared user activity doesn't move `HIDIdleTime`, the counter the worker reads. It isn't a choice. Case 4b's stand-in and case 4's tests-only stand.
+
+**The cut: the same five minutes for the release PR and the tag.** The cut's steps run in the Spark lane's session, and the MacBook lane's record holds none of them.
+- **The ping:** before the release PR's merge and before the tag, the Spark lane pings the owner and waits five minutes.
+- **If the owner doesn't answer,** the Spark lane merges the release PR through `safe_merge.sh` and pushes the tag.
+- **What stays the owner's either way:** the maintainer scripts, which only the owner can run from either session (the version bump, `refresh_open_issues.py`, `sip_sweep.py`, `attach_release_records.py`). Each is put to the owner as a command ready to paste. A cut step that waits on one waits, and says so.
+
+**Added to §11:**
+- cases 3 and 3b, if not run: why, by the owner's ruling, and that `caffeinate -u` doesn't move the idle counter the worker reads;
+- **the timed band's top margin:** case 1's timed scenario passed at the band's last value. A reading taken once at a fixed time shows that a value is in a band, not that it advances at the right rate;
+- #3309, beside #3272: a correction that emits nothing is retested on an unchanged tree.
